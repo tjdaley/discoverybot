@@ -107,7 +107,7 @@ You'll see that most of the *connect()* method's code relates to catching, loggi
 Before we get too involved with processing email, we first want to make sure we have all the folders
 that our application needs. This application only needs an INBOX folder at this time. The INBOX folder is where
 new email messages will appear. In a *future* version, after we process an email message, we might move it to
-a *PROCESSED* folder. We're not doing that right now, but the *check_folders()* method makes sure it exists
+a PROCESSED folder. We're not doing that right now, but the *check_folders()* method makes sure it exists
 anyway.
 
 The *check_folders()* method does three things:
@@ -216,7 +216,7 @@ system. Prepending the *msgid* to the filename protects us from that because, wo
 which we are unable to save. If someone is sending us nefarious junk, we don't want to save it.
 
 You'll notice a *sanitize_from_name* function being called. It's described later, but all it does it strips the leading
-and trailing angle brackets that sometimes appear around email addresses, e.g. <tom@powerdaley.com>.
+and trailing angle brackets that sometimes appear around email addresses, e.g. < tom@powerdaley.com >.
 
 If *process_message()* is able to sucessfully handle the message, it returns a **True** value. Otherwise, it returns
 a **False** value. You should recall from above that this **True** or **False** value is provided to the
@@ -307,7 +307,7 @@ invoked from the command line, e.g.
 $ python mailgetter.py
 ```
 
-Then the built-in variable *__name__* will be equal to the string  *__main__*. In that case
+Then the built-in variable ```__name__``` will be equal to the string  ```__main__```. In that case
 it will call the *main()* method which pulls all the rest of this code together:
 
 1. Creates an instance of *MailGetter*.
@@ -326,3 +326,8 @@ def main():
 if __name__ == "__main__":
     main()
 ```
+
+### The Author
+Thomas J. Daley is a family law attorney. He handles all family law matters including divorce, custody,
+child support, modification, enforcement, adoption, and termination. You can learn more about his
+law practice at https://www.powerdaley.com.
