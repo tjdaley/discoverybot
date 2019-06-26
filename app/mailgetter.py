@@ -41,6 +41,9 @@ class MailGetter(object):
         except ConnectionRefusedError as e:
             self.logger.fatal("Connection to %s:%s was refused: %s", self.params["mailserver"], self.params["mailport"], e)
             return False
+        except Exception as e:
+            self.logger.fatal("Error connecting to %s:%s: %s", self.params["mailserver"], self.params["mailport"], e)
+            return False
 
         return True
 

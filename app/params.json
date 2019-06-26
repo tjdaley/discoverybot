@@ -1,4 +1,5 @@
 {
+    "COMMENT-001": "EMAIL SERVER PARAMETERS",
     "mailserver":"mail.jdbot.us",
     "mailport":993,
     "mailssl": true,
@@ -6,6 +7,7 @@
     "password":"Attorney.Bot**825+",
     "inbox": "INBOX",
     "processed_folder": "INBOX.PROCESSED",
+    "COMMENT-002": "FILE SYSTEM FOLDERS",
     "input_path":"./app/retrieved",
     "processed_path":"./app/processed"
 }
