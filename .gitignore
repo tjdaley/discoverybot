@@ -1,6 +1,6 @@
 .vscode
 retrieved/
-params.json
+app/params.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
