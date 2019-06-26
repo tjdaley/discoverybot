@@ -38,7 +38,7 @@ we'll want to provide run time parameters through environment variables for secu
 module allows us to flip between those two methods without making any significant changes to our
 program code.
 
-```python```
+```python
 from util.params import Params
 ```
 
