@@ -28,9 +28,9 @@ EXAMPLES:
     print(my_params.keys)
     # KeysView({"username":"tdaley", "password":"my password", "server":"localhost"})
 
-Copyright (c) 2019 by Thomas J. Daley
+Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
-__author__ = "Thomas J. Daley"
+__author__ = "Thomas J. Daley, J.D."
 __version__ = "0.0.1"
 
 import json

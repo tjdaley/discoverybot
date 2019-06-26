@@ -1,0 +1,11 @@
+{
+    "mailserver":"mail.jdbot.us",
+    "mailport":993,
+    "mailssl": true,
+    "username":"bot@jdbot.us",
+    "password":"Attorney.Bot**825+",
+    "inbox": "INBOX",
+    "processed_folder": "INBOX.PROCESSED",
+    "input_path":"./app/retrieved",
+    "processed_path":"./app/processed"
+}
