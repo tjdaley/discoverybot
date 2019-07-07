@@ -1,7 +1,7 @@
 """
 mailgetter.py - Retrieve email messages addressed to this service.
 
-TODO: Run in a loop using IMAP's IDLE notification instead of polling and then dieing.
+TODO: Do not run if another version of this program is running.
 
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
