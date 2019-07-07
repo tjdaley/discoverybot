@@ -50,6 +50,14 @@ to the screen and to a log file.
 from util.logger import Logger
 ```
 
+The ```database``` module defines a class that wraps our functions for CRUD operations on our persistent
+datastore. For now, it's implemented on top of MongoDb, but the API exposed by this class is intended to
+be implementation-agnostic and thus amenable to changes in plans.
+
+```python
+from util.database import Database
+```
+
 # The MailGetter Class
 
 The **MailGetter** class contains all the functions needed to connect to a mail server, login using our
@@ -204,10 +212,19 @@ result from *process_message()*, then mark this message as SEEN and FLAGGED FOR 
 
 ## The process_message() Method
 
-The *process_message()* method handles the details of processing each individual email message. For now,
-all this method does is got through each attachment contained in the email message (there might be zero, one, or 
-more attachments) and, if the attachment is a PDF file, it saves it with a unique name. If the person who sent us the
-email did not include a filename, then we make one up.
+The *process_message()* method handles the details of processing each individual email message.
+
+This method handles three scenarios:
+
+1. **ATTACHED PDF**: If a PDF is attached to the message, the file is saved with a unique name.
+2. **HTML LINK**: If the PDF is referenced by an HTML *anchor tag* ("a") that has an *href* property, the file is retrieved and saved with a unique name.
+3. **TEXT LINK**: If the PDF is referenced by a text string, e.g., ```https://www.site.com/file.pdf```, the file is retrieved and saved with a unique name, e.g. *msgid*-file.pdf in this case.
+
+What is NOT handled?
+
+1. **Incomplete URLs**. If the URL of a link does not contain an "htp* or "https" prefex, we won't catch it.
+2. **Indirect Linkes**. If the URL redirects us to the PDF, such as might happen if someone gets a DropBox link or a tinyurl, we
+don't handled the redirection.
 
 One thing you'll notice is that we put the *msgid* at the beginning of all the filenames. The main reason for doing that
 is to prevent some freak from sending us a file name that is designed to clobber one of the files that belongs to
@@ -257,12 +274,26 @@ a **False** value. You should recall from above that this **True** or **False** 
                 # Save the attached file
                 # For now, only save files of type ".PDF"
                 # TODO: Parse HTML parts to see if we have links to PDF files stored elsewhere.
-                if extension.upper() == ".PDF":
+                upper_extension = extension.upper()
+
+                # Save attached file . . .
+                if upper_extension == ".PDF":
                     with open("{}/{}".format(self.params["input_path"], filename), "wb") as fp:
                         fp.write(part.get_payload(decode=True))
+
+                # Save file referenced by a link . . .
+                elif upper_extension == ".HTML" or upper_extension == ".HTM":
+                    links = extract_html_links(part.get_payload())
+                    self.save_linked_files(links, msgid)
+                elif upper_extension == ".BAT":
+                    links = extract_text_links(part.get_payload())
+                    self.save_linked_files(links, msgid)
+                else:
+                    self.logger.info("Skipping: (%s) %s", filename, part.get_payload(decode=True))
             except Exception as e:
                 self.logger.error("Error processing attachment #%s from message #%s from %s: %s",
                     counter, msgid, message.get("From"), e)
+                self.logger.exception(e)
                 return False
             
         return True
@@ -296,6 +327,61 @@ def sanitize_from_name(from_name:str)->str:
         result = result[:-1]
 
     return result
+```
+
+## The extract_text_links() Method
+
+This function extracts links just pasted in as plain text. If someone rights clicks on a link,
+selects the "Copy Link" option, and then pastes the result into a plain-text email message,
+this is where it will be handled.
+
+```python
+TEXT_LINK_REGEX = re.compile(r'(http|https)://(.*?\.pdf)', re.IGNORECASE)
+def extract_text_links(text_content:str)->list:
+    """
+    Extract a plain-text link passed to us. Email text content will probably be in quote-printable
+    form (e.g. 3dutf-8). Therefore, the first step is to convert from quote-printable
+    to a regular UTF-8 string. Next, search this string for links.
+
+    From: https://www.mschweighauser.com/fast-url-parsing-with-python/
+
+    Args:
+        text_content (str): HTML content to parse.
+
+    Returns:
+        (list): List of links. List is empty is no links are found.
+    """
+    my_content = quopri.decodestring(text_content).decode('utf-8')
+    return ["{}://{}".format(match[0],match[1]) for match in TEXT_LINK_REGEX.findall(my_content)]
+```
+
+## The extract_html_links() Method
+
+This function extracts links from an HTML-formatted part of the mail message.
+If someone forwards us an email from the e-file system or pastes a link into an HTML-formatted message,
+it will be handled here. TODO: This method could probably be eliminated and the ```extract_text_links()``` method
+used instead. I write this function first, then expexted to have to do something quite different for plain
+text messages. However, the ```TEXT_LINK_REGEX``` is probably sufficiently robust to handle both cases.
+
+```python
+HTML_TAG_REGEX = re.compile(r'<a[^<>]+?href=([\'\"])(.*?)\1', re.IGNORECASE)
+def extract_html_links(html_content:str)->list:
+    """
+    Extract the value of the HREF property from any links ("a" tags) found in the
+    html_content passed to us. Email text content will probably be in quote-printable
+    form (e.g. 3dutf-8). Therefore, the first step is to convert from quote-printable
+    to a regular UTF-8 string. Next, search this string for links.
+
+    From: https://www.mschweighauser.com/fast-url-parsing-with-python/
+
+    Args:
+        html_content (str): HTML content to parse.
+
+    Returns:
+        (list): List of links. List is empty is no links are found.
+    """
+    my_content = quopri.decodestring(html_content).decode('utf-8')
+    return [match[1] for match in HTML_TAG_REGEX.findall(my_content)]
 ```
 
 ## Final bit of code.
