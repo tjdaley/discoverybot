@@ -242,7 +242,7 @@ class MailGetter(object):
 
         while stay_alive:
             try:
-                # Wait for up to 30 seconds for new messages.
+                # Wait for up to *idle_timeout* seconds for new messages.
                 responses = self.server.idle_check(timeout=idle_timeout)
                 self.logger.debug("Response to idle_check(): %s", responses)
 
@@ -374,7 +374,7 @@ def cloudize_link(link:str)->str:
     such as *tineyurl*.
 
     Args:
-        link (str): Link to examine and possibley modify.
+        link (str): Link to examine and possibly modify.
 
     Returns:
         (str): Cloud-compatible link
