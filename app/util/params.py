@@ -19,14 +19,13 @@ EXAMPLES:
 
     MYAPP_username = "tdaley"
     MYAPP_password = "my password"
-    MYAPP_server   = "localhost"
 
     from params import Params
     my_params = Params(storage="env", param_prefix="MYAPP_")
     # Thereafter, use my_params as a dict object where the keys
     # are the environment variable names with the prefix removed, e.g.
     print(my_params.keys)
-    # KeysView({"username":"tdaley", "password":"my password", "server":"localhost"})
+    # KeysView({"username":"tdaley", "password":"my password"})
 
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
@@ -40,21 +39,28 @@ from collections import UserDict
 PARAM_PREFIX = "dbot_"
 PARAM_FILE = "params.json"
 
+
 class Params(UserDict):
     """
     Encapsulates parameters behavior. Isolates app components from parameter
     storage implementation (json, DB, env, etc.).
     """
-    def __init__(self, storage:str = "json", param_prefix:str = PARAM_PREFIX, param_file:str = PARAM_FILE)->dict:
+    def __init__(
+        self,
+        storage: str = "json",
+        param_prefix: str = PARAM_PREFIX,
+        param_file: str = PARAM_FILE
+    ) -> dict:
         """
         Class initializer. Reads params from storage.
 
         Args:
-            storage (str): Type of storage. Options are "json" and "env", for now.
+            storage (str): Type of storage. Options are "json" and "env".
                         Default is "json".
-            param_prefix (str): Prefix to be used in filtering environment variables.
+            param_prefix (str): Prefix to be used in filtering env variables.
                                 Only applicable if *storage* = "env".
-            param_file (str): Name of file to read for parameters. Default = params.json.
+            param_file (str): Name of file to read for parameters.
+                              Default = params.json.
                               Only applicable if *storage* = "json"
         """
         self.data = {}
@@ -63,7 +69,8 @@ class Params(UserDict):
         elif storage == "env":
             self.__read_environment_params(param_prefix)
         else:
-            raise ValueError("Storage must be one of 'json' or 'env' [{}].".format(storage))
+            message = "Storage must be one of 'json' or 'env' [{}]."
+            raise ValueError(message.format(storage))
 
     def __read_json_params(self, param_file):
         """
@@ -79,11 +86,12 @@ class Params(UserDict):
 
     def __read_environment_params(self, param_prefix):
         """
-        Read run-time parameters from environment variables. Do this by looping through
-        every environment variable and extracting those that begin with PARAM_PREFIX.
+        Read run-time parameters from environment variables. Do this by
+        looping through every environment variable and extracting those
+        that begin with PARAM_PREFIX.
 
         Args:
-            param_prefix (str): Prefix to be used in filtering environment variables.
+            param_prefix (str): Prefix to be used in filtering env variables.
 
         Returns:
             (dict): Dictionary of runtime parameter values.

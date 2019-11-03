@@ -19,8 +19,8 @@ class ServerLock(object):
         """
         self.lock_port = lock_port
         self.socket = None
-    
-    def lock(self)->bool:
+
+    def lock(self) -> bool:
         """
         Attempt to obtain a server-wide lock.
 
