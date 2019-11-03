@@ -1,8 +1,6 @@
 """
 mailgetter.py - Retrieve email messages addressed to this service.
 
-TODO: Do not run if another version of this program is running.
-
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
 __author__ = "Thomas J. Daley, J.D."
@@ -19,9 +17,16 @@ import urllib.parse
 
 from imapclient import IMAPClient, exceptions as IMAPExceptions
 
-from util.params import Params
-from util.logger import Logger
+from util.botqueue import BotQueue
 from util.database import Database
+from util.logger import Logger
+from util.params import Params
+from util.serverlock import ServerLock
+
+# Uses this port to make sure only one version of this program
+# is running on this server. Would like a distributed locking mechanism
+# but I can't afford one right now. ;-)
+LOCK_PORT = 9000
 
 class MailGetter(object):
     """
@@ -35,7 +40,8 @@ class MailGetter(object):
         self.logger = Logger.get_logger()
         self.params = Params(param_file="./app/params.json")
         self.server = None
-        self.db = Database()
+        #self.db = Database()
+        self.queue = BotQueue()
 
     def connect_db(self)->bool:
         """
@@ -47,13 +53,11 @@ class MailGetter(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
-        if not self.db.connect():
-            self.logger.error("Cannot connect to DB . . . stopping.")
-            return False
-
+        #if not self.db.connect():
+        #    self.logger.error("Cannot connect to DB . . . stopping.")
+        #    return False
         return True
         
-
     def connect(self)->bool:
         """
         Connect and login to the remote IMAP server.
@@ -153,7 +157,8 @@ class MailGetter(object):
                 filename = "{}/{}-{}".format(self.params["input_path"], msgid, urllib.parse.unquote(link[link.rfind("/")+1:]))
                 with open(filename, "wb") as fp:
                     fp.write(content)
-                self.db.insert_received_file(from_email=from_email, reply_to=reply_to, subject=subject, filename=filename)
+                self.queue.publish(arrival_notification(from_email, reply_to, subject, filename))
+                #self.db.insert_received_file(from_email=from_email, reply_to=reply_to, subject=subject, filename=filename)
 
     def process_message(self, msgid, message)->bool:
         """
@@ -185,8 +190,8 @@ class MailGetter(object):
                 filename = part.get_filename()
                 extension = mimetypes.guess_extension(part.get_content_type()) or ".bin"
                 if not filename:
-                    sanitized_from_name = sanitize_from_name(message.get("From"))
-                    filename = "{}-{}-part-{}{}".format(msgid, sanitized_from_name, counter, extension)
+                    #sanitized_from_name = sanitize_from_name(message.get("From"))
+                    filename = "{}-{}-part-{}{}".format(msgid, from_email, counter, extension)
                 else:
                     filename = "{}-{}".format(msgid, filename)
 
@@ -202,10 +207,11 @@ class MailGetter(object):
                     filename = "{}/{}".format(self.params["input_path"], filename)
                     with open(filename, "wb") as fp:
                         fp.write(part.get_payload(decode=True))
-                    self.db.insert_received_file(from_email=from_email, reply_to=reply_to, subject=subject, filename=filename)
+                    #self.db.insert_received_file(from_email=from_email, reply_to=reply_to, subject=subject, filename=filename)
+                    self.queue.publish(arrival_notification(from_email, reply_to, subject, filename))
 
                 # Save file referenced by a link . . .
-                elif upper_extension == ".HTML" or upper_extension == ".HTM":
+                elif upper_extension[:4] == ".HTM":
                     links = extract_html_links(part.get_payload())
                     self.save_linked_files(links, msgid, from_email, subject, reply_to)
                 elif upper_extension == ".BAT":
@@ -308,6 +314,29 @@ class MailGetter(object):
                 # If we had an error processing the message, mark it for follow AND as seen.
                 self.server.set_flags(msgid, [b'\\Flagged for Followup', b'\\Seen'])
 
+
+def arrival_notification(email_from:str, reply_to:str, subject:str, filename: str)->dict:
+    """
+    Create an arrival notification message to be published to our outbound queue.
+
+    Args:
+        email_from (str): Email we received the message from.
+        reply_to (str): Email we should reply to.
+        subject (str): Subject line from email.
+        filename (str): Name of file we have extracted.
+    
+    Returns:
+        (dict): Item to publish to outbound queue.
+    """
+    return {
+        "publisher": "mailgetter",
+        "email_from": email_from,
+        "reply_to": reply_to,
+        "subject": subject,
+        "filename": filename
+    }
+
+
 def sanitize_from_name(from_name:str)->str:
     """
     Sanitize the "from" name (email address of sender) for use as part of
@@ -388,11 +417,27 @@ def cloudize_link(link:str)->str:
     return link
 
 def main():
+    logger = Logger.get_logger()
+    lock = ServerLock(LOCK_PORT)
+    if not lock.lock():
+        logger.error("Another copy of {} is running. Quitting this copy.".format(__file__))
+        exit()
+
     mailgetter = MailGetter()
-    if mailgetter.connect_db():
-        if mailgetter.connect():
-            if mailgetter.check_folders():
-                mailgetter.wait_for_messages()
+
+    if not mailgetter.connect_db():
+        logger.error("Unable to connect to database. Exiting.")
+        exit()
+
+    if not mailgetter.connect():
+        logger.error("Unable to connect to email server. Exiting.")
+        exit()
+    
+    if not mailgetter.check_folders():
+        logger.error("Cannot continue with incorrect folder structure.")
+        exit()
+    
+    mailgetter.wait_for_messages()
 
 if __name__ == "__main__":
     main()
