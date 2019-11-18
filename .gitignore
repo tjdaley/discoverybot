@@ -1,6 +1,11 @@
 .vscode
 retrieved/
+processed/
 app/params.json
+app/credentials.json
+app/token.pickle
+credentials.json
+token.pickle
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

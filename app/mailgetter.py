@@ -24,6 +24,8 @@ from util.serverlock import ServerLock
 # but I can't afford one right now. ;-)
 LOCK_PORT = 9000
 
+MAIN = "MAILGETTER"
+
 
 class MailGetter(object):
     """
@@ -33,7 +35,8 @@ class MailGetter(object):
         """
         Class initializer.
         """
-        self.logger = Logger.get_logger()
+        mimetypes.init()
+        self.logger = Logger.get_logger(log_name=MAIN + ".Cls")
         self.params = Params(param_file="./app/params.json")
         self.server = None
         self.queue = BotQueue()
@@ -184,7 +187,7 @@ class MailGetter(object):
                 with open(filename, "wb") as fp:
                     fp.write(content)
                 self.queue.publish(arrival_notification(
-                    from_email, reply_to, subject, filename)
+                    from_email, reply_to, subject, filename, 'application/pdf')
                 )
 
     def process_message(self, msgid, message) -> bool:
@@ -205,7 +208,12 @@ class MailGetter(object):
         )
         from_email = sanitize_from_name(message.get("From"))
         reply_to = sanitize_from_name(message.get("Return-Path") or from_email)
-        subject = message.get("Subject")
+
+        try:
+            subject = message.get("Subject")
+        except OSError as e:
+            self.logger.error("Cannot extract message subject: %s", str(e))
+            subject = "N/A"
 
         for key in message.keys():
             self.logger.debug("%s = %s", key, message.get(key, None))
@@ -220,6 +228,7 @@ class MailGetter(object):
 
                 # Extract & sanitize filename. Create a filename if not given.
                 filename = part.get_filename()
+                self.logger.debug("*** %s ***", filename)
                 extension = mimetypes.guess_extension(part.get_content_type())\
                     or ".bin"
                 if not filename:
@@ -230,7 +239,10 @@ class MailGetter(object):
                         extension
                     )
                 else:
-                    filename = "{}-{}".format(msgid, filename)
+                    filename = "{}-{}"\
+                        .format(msgid, filename)\
+                        .replace("\r", "")\
+                        .replace("\n", "")
 
                 counter += 1
 
@@ -238,25 +250,37 @@ class MailGetter(object):
                 # For now, only save files of type ".PDF"
                 # TODO: Parse HTML parts to see if we have links to PDF files
                 # stored elsewhere.
-                upper_extension = extension.upper()
+                lower_extension = extension.lower()
 
                 # Save attached file . . .
-                if upper_extension == ".PDF":
-                    filename = "{}/{}".format(
-                        self.params["input_path"],
-                        filename
-                    )
-                    with open(filename, "wb") as fp:
-                        fp.write(part.get_payload(decode=True))
-                    self.queue.publish(arrival_notification(
-                        from_email,
-                        reply_to,
-                        subject,
-                        filename)
-                    )
+                if lower_extension in ['.pdf', '.docx', '.doc', '.rtf']:
+                    try:
+                        mimetype = mimetypes.types_map[lower_extension]
+                    except KeyError as error:
+                        self.logger.error(
+                            "Cannot map '%s' to a mime type: %s",
+                            lower_extension,
+                            str(error)
+                        )
+                        mimetype = None
+
+                    if mimetype is not None:
+                        filename = "{}/{}".format(
+                            self.params["input_path"],
+                            filename
+                        )
+                        with open(filename, "wb") as fp:
+                            fp.write(part.get_payload(decode=True))
+                        self.queue.publish(arrival_notification(
+                            from_email,
+                            reply_to,
+                            subject,
+                            filename,
+                            mimetype)
+                        )
 
                 # Save file referenced by a link . . .
-                elif upper_extension[:4] == ".HTM":
+                elif lower_extension[:4] == ".htm":
                     links = extract_html_links(part.get_payload())
                     self.save_linked_files(
                         links,
@@ -265,7 +289,7 @@ class MailGetter(object):
                         subject,
                         reply_to
                     )
-                elif upper_extension == ".BAT":
+                elif lower_extension == ".bat":
                     links = extract_text_links(part.get_payload())
                     self.save_linked_files(
                         links,
@@ -275,10 +299,7 @@ class MailGetter(object):
                         reply_to
                     )
                 else:
-                    self.logger.info(
-                        "Skipping: (%s) %s", filename,
-                        part.get_payload(decode=True)
-                    )
+                    self.logger.info("Skipping: %s", filename)
             except Exception as e:
                 self.logger.error(
                     "Error with attachment #%s from message #%s from %s: %s",
@@ -394,7 +415,8 @@ def arrival_notification(
     email_from: str,
     reply_to: str,
     subject: str,
-    filename: str
+    filename: str,
+    mime_type: str
 ) -> dict:
     """
     Create an arrival notification message to be published to our outbound
@@ -405,16 +427,18 @@ def arrival_notification(
         reply_to (str): Email we should reply to.
         subject (str): Subject line from email.
         filename (str): Name of file we have extracted.
+        mime_type (str): MIME-type for this file.
 
     Returns:
         (dict): Item to publish to outbound queue.
     """
     return {
-        "publisher": "mailgetter",
-        "email_from": email_from,
-        "reply_to": reply_to,
-        "subject": subject,
-        "filename": filename
+        'publisher': "mailgetter",
+        'email_from': email_from,
+        'reply_to': reply_to,
+        'subject': subject,
+        'filename': filename,
+        'mime_type': mime_type
     }
 
 
@@ -512,7 +536,7 @@ def cloudize_link(link: str) -> str:
 
 
 def main():
-    logger = Logger.get_logger()
+    logger = Logger.get_logger(log_name=MAIN)
     lock = ServerLock(LOCK_PORT)
     if not lock.lock():
         logger.error(
@@ -522,10 +546,6 @@ def main():
 
     mailgetter = MailGetter()
 
-    if not mailgetter.connect_db():
-        logger.error("Unable to connect to database. Exiting.")
-        exit()
-
     if not mailgetter.connect():
         logger.error("Unable to connect to email server. Exiting.")
         exit()
@@ -534,7 +554,10 @@ def main():
         logger.error("Cannot continue with incorrect folder structure.")
         exit()
 
-    mailgetter.wait_for_messages()
+    try:
+        mailgetter.wait_for_messages()
+    except KeyboardInterrupt as error:
+        print("Good bye")
 
 
 if __name__ == "__main__":
