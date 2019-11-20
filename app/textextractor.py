@@ -610,8 +610,8 @@ class EmailNotifier(object):
             context=context
         ) as server:
             server.login(
-                params['username'],
-                params['password']
+                self.params['username'],
+                self.params['password']
             )
             server.sendmail(
                 self.params['username'],
@@ -619,7 +619,7 @@ class EmailNotifier(object):
                 message
             )
 
-    def format_message(self, doc: dict) -> str, str:
+    def format_message(self, doc: dict) -> (str, str):
         """
         Format an outbound message.
 

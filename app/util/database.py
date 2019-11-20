@@ -85,7 +85,7 @@ class Database(object):
             (bool): True if successful, otherwise False.
         """
         record = base_record()
-        record += requests
+        record = dict(record, **requests)
         id = self.dbconn[DISCOVERY_TABLE_NAME].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
