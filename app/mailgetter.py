@@ -51,7 +51,7 @@ class MailGetter(object):
         try:
             self.server = IMAPClient(
                 self.params["mailserver"],
-                port=self.params["mailport"],
+                port=self.params["imapport"],
                 ssl=self.params["mailssl"],
                 use_uid=True
             )
@@ -60,7 +60,7 @@ class MailGetter(object):
             self.logger.fatal(
                 "Connection to %s:%s was refused: %s",
                 self.params["mailserver"],
-                self.params["mailport"],
+                self.params["imapport"],
                 e
             )
             return False
@@ -68,7 +68,7 @@ class MailGetter(object):
             self.logger.fatal(
                 "Error connecting to %s:%s: %s",
                 self.params["mailserver"],
-                self.params["mailport"],
+                self.params["imapport"],
                 e
             )
             return False
