@@ -6,8 +6,10 @@ Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 import ntpath
 
 from util.botqueue import BotQueue
+from util.database import Database
 from util.logger import Logger
 from util.params import Params
+from util.texasbarsearch import TexasBarSearch
 
 from bson import json_util
 import json
@@ -24,6 +26,15 @@ import io
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+
+# For sending email replies
+import email
+import smtplib
+import ssl
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 DEBUG = False
 MAIN = "TXTEXT"
@@ -447,7 +458,7 @@ class TextParser(object):
 
         # We found the first request. Now find the rest.
         target_request_number = 1
-        request_text = lines[starting_index]
+        request_text = ''
         for line in lines[starting_index:]:
             next_request_id = "{}{}."\
                 .format(prefix, str(target_request_number+1))
@@ -541,6 +552,108 @@ class TextParser(object):
             'number': request_number,
             'request': clean_string(request_text)
         }
+
+
+class EmailNotifier(object):
+    """
+    Encapsulates ability to send a notification to the person who
+    emailed the discovery requests to us.
+    """
+    SUBJECT = "{discovery_type} from {oc_name}"
+    MESSAGE = """
+    Cause #{cause_number}
+    Court: {court_number} {court_type}
+    County: {county}
+    Discovery type: {discovery_type}
+    Number of requests: {request_count}
+    Propounded by:
+    \t{oc_name}, Esq.
+    \t{oc_email}
+    \t{oc_address}
+    \tState Bar No. {oc_bar_number}
+
+    You can view these requests here: http://www.discovery.jdbot.us
+
+    Kindest regards,
+
+    Discovery Bot
+    """
+
+    def __init__(self):
+        """
+        Initializer.
+        """
+        self.params = Params(param_file="./app/params.json")
+
+    def reply(self, doc: dict) -> bool:
+        """
+        Send a reply to the user who sent the requests to us.
+
+        Args:
+            doc (dict): The document that was saved to the database.
+        Returns:
+            (bool): True if successful, otherwise False.
+        """
+        subject, message = self.format_message(doc)
+        context = ssl.create_default_context()
+        email = MIMEMultipart()
+        email['From'] = self.params['username']
+        email['To'] = doc['item']['payload']['reply_to']
+        email['Subject'] = subject
+        email['Bcc'] = 'tom@powerdaley.com'
+        email.attach(MIMEText(message, 'plain'))
+        message = email.as_string()
+
+        with smtplib.SMTP_SSL(
+            self.params['mailserver'],
+            self.params['smtpport'],
+            context=context
+        ) as server:
+            server.login(
+                params['username'],
+                params['password']
+            )
+            server.sendmail(
+                self.params['username'],
+                doc['item']['payload']['reply_to'],
+                message
+            )
+
+    def format_message(self, doc: dict) -> str, str:
+        """
+        Format an outbound message.
+
+        Args:
+            doc (dict): Document that was saved to the datbase.
+        Returns:
+            (str): Subject
+            (str): Message
+        """
+        message = EmailNotifier.MESSAGE.format(
+            discovery_type=doc['discovery_type'],
+            oc_name=doc['requesting_attorney']['details']['name'],
+            cause_number=doc['cause_number'],
+            court_number=doc['court_number'],
+            court_type=doc['court_type'],
+            county=doc['county'],
+            request_count=len(doc['requests']),
+            oc_email=doc['requesting_attorney']['email'],
+            oc_address=doc['requesting_attorney']['details']['address'],
+            oc_bar_number=doc['requesting_attorney']['bar_number'],
+        )
+        subject = EmailNotifier.SUBJECT.format(
+            discovery_type=doc['discovery_type'],
+            oc_name=doc['requesting_attorney']['details']['name'],
+            cause_number=doc['cause_number'],
+            court_number=doc['court_number'],
+            court_type=doc['court_type'],
+            county=doc['county'],
+            request_count=len(doc['requests']),
+            oc_email=doc['requesting_attorney']['email'],
+            oc_address=doc['requesting_attorney']['details']['address'],
+            oc_bar_number=doc['requesting_attorney']['bar_number'],
+        )
+        return subject, message
 
 
 def clean_string(instr: str) -> str:
@@ -668,7 +781,11 @@ def validate_item(item: dict, logger) -> bool:
 
 def main():
     queue = BotQueue()
+    db = Database()
+    db.connect()
+    attorney_searcher = TexasBarSearch()
     google_extractor = GoogleTextExtractor()
+    emailer = EmailNotifier()
     extractors = {
         "PDF": google_extractor,
         "DOCX": google_extractor,
@@ -716,6 +833,7 @@ def main():
                     print("REQUEST {}: {}\n{}\n".format(request["number"], request["request"], "-"*80))  # NOQA
             outfile = output_file_name(filename, params['processed_path']) + ".json"  # NOQA
 
+            bar_number = parser.oc_bar_number()
             doc = {
                 'court_type': parser.court_type(),
                 'court_number': parser.court_number(),
@@ -723,16 +841,19 @@ def main():
                 'cause_number': parser.cause_number(),
                 "discovery_type": parser.discovery_type(),
                 "requesting_attorney": {
-                    "bar_number": parser.oc_bar_number(),
+                    "bar_number": bar_number,
                     "email": parser.oc_email(),
+                    "details": attorney_searcher.find(bar_number)
                 },
                 'requests': requests,
                 'item': item,
             }
-            with open(outfile, "w") as json_file:
-                json.dump(doc, json_file, indent=4, default=json_util.default)
+            db.insert_discovery_requests(doc)
+            emailer.reply(doc)
 
             if DEBUG:
+                with open(outfile, "w") as json_file:
+                    json.dump(doc, json_file, indent=4, default=json_util.default)  # NOQA
                 parser.dump_lines(output_file_name(filename, params['processed_path']) + "_dump.txt")  # NOQA
 
         # See if we got anything useful
