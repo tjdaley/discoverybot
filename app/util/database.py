@@ -14,6 +14,7 @@ from .logger import Logger
 DB_URL = "mongodb://ec2-54-235-51-13.compute-1.amazonaws.com:27017/"
 DB_NAME = "discoverybot"
 FILE_TABLE_NAME = "received_files"
+DISCOVERY_TABLE_NAME = 'discovery_requests'
 
 
 class Database(object):
@@ -70,6 +71,22 @@ class Database(object):
         record["status_time"] = time.time()
 
         id = self.dbconn[FILE_TABLE_NAME].insert_one(record).inserted_id
+        self.last_inserted_id = id
+        return True
+
+    def insert_discovery_requests(self, requests) -> bool:
+        """
+        Save discovery requests.
+
+        Args:
+            requests (dict): Requests create by *textextractor*.
+
+        Returns:
+            (bool): True if successful, otherwise False.
+        """
+        record = base_record()
+        record += requests
+        id = self.dbconn[DISCOVERY_TABLE_NAME].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
 
