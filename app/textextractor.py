@@ -185,17 +185,27 @@ class GoogleTextExtractor(TextExtractor):
             'mimeType': dest_mime_type,
         }
         media = MediaFileUpload(filename, mimetype=src_mime_type)
-        file_resource = self.drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
 
-        self.logger.info(
-            "Uploaded %s as file id %s.",
-            base_file_name(filename),
-            file_resource.get('id')
-        )
+        file_resource = None
+        retry_count = 0
+
+        while file_resource is None and retry_count < 3:
+            try:
+                file_resource = self.drive_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+
+                self.logger.info(
+                    "Uploaded %s as file id %s.",
+                    base_file_name(filename),
+                    file_resource.get('id')
+                )
+            except googleapiclient.errors.HttpError as error:
+                retry_count += 1
+                self.logger.error("Error uploading %s: %s", base_file_name(filename), error)  # NOQA
+                time.sleep(10*retry_count)
 
         return file_resource
 
@@ -604,20 +614,24 @@ class EmailNotifier(object):
         email.attach(MIMEText(message, 'plain'))
         message = email.as_string()
 
-        with smtplib.SMTP_SSL(
-            self.params['mailserver'],
-            self.params['smtpport'],
-            context=context
-        ) as server:
-            server.login(
-                self.params['username'],
-                self.params['password']
-            )
-            server.sendmail(
-                self.params['username'],
-                doc['item']['payload']['reply_to'],
-                message
-            )
+        try:
+            with smtplib.SMTP_SSL(
+                self.params['mailserver'],
+                self.params['smtpport'],
+                context=context
+            ) as server:
+                server.login(
+                    self.params['username'],
+                    self.params['password']
+                )
+                server.sendmail(
+                    self.params['username'],
+                    doc['item']['payload']['reply_to'],
+                    message
+                )
+                server.quit()
+        except Exception as error:
+            print("Error sending email:", str(error))
 
     def format_message(self, doc: dict) -> (str, str):
         """
