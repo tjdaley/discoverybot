@@ -24,6 +24,7 @@ import pickle
 import os.path
 import io
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
@@ -36,7 +37,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-DEBUG = False
+DEBUG = True
 MAIN = "TXTEXT"
 
 
@@ -202,7 +203,7 @@ class GoogleTextExtractor(TextExtractor):
                     base_file_name(filename),
                     file_resource.get('id')
                 )
-            except googleapiclient.errors.HttpError as error:
+            except HttpError as error:
                 retry_count += 1
                 self.logger.error("Error uploading %s: %s", base_file_name(filename), error)  # NOQA
                 time.sleep(10*retry_count)
@@ -307,12 +308,36 @@ class TextParser(object):
 
         For now, assumes the last word of the first line is the cause number.
         """
+        prefix_words = [
+            'NO', 'NUM', 'NUMBER', 'CAUSE', 'CASE', 'MATTER',
+        ]
         result = None
-        try:
-            first_words = self.lines[0].split()
-            result = first_words[-1]
-        except Exception as error:
-            self.logger.error("Error extracting cause number: %s", error)
+        line_index = 0
+        while line_index < 10 and result is None:
+            try:
+                # split line into words containing only letters and numbers
+                line = self.lines[line_index]
+                clean_words = re.sub(r'[^a-zA-Z0-9\s]', '', line).split()
+                # split line into words in their original form
+                words = line.split()
+                line_index += 1
+
+                # If we found multiple words and one is a normal prefix word
+                # for a cause number, then treat the final word of that row
+                # as the cause number.
+                if len(clean_words) > 1:
+                    if clean_words[0].upper() in prefix_words:
+                        result = words[-1]
+                else:
+                    # If there is only one word on the line and it is more or
+                    # less numeric, e.g. 470-5555-2019, treat that as the cause
+                    # number.
+                    if clean_words[0].isdigit():
+                        result = words[0]
+            except Exception as error:
+                self.logger.error("Error extracting cause number: %s", error)
+                self.logger.exception(error)
+                return None
 
         return result
 
@@ -347,6 +372,7 @@ class TextParser(object):
                     match = re.search(pattern, line)
                     if match:
                         result = match.group(group_num).strip()
+                        # print("*"*80, "\nLine:", line, "\nPattern:", pattern, "\nResult:", result, "\n", "|"*80)
                         break
                 if result:
                     break
@@ -360,16 +386,17 @@ class TextParser(object):
         """
         court_patterns = [
             r'(\d+)(?:ND|RD|TH|ST)',
-            r'(?:NO|NUMBER|NO\.|NUM|NUM\.)(?:\:|\s)(\d+)'
+            r'(?:NO|NUMBER|NO\.|NUM|NUM\.)(?:\:|\s)(\d+)',
+            r'([0-9]{1,3})\sJUDICIAL',
         ]
-        return self.get_match_group(court_patterns)
+        return self.get_match_group(court_patterns, window_size=20)
 
     def county(self) -> str:
         """
         Try to figure out what county this case is in.
         """
         county_patterns = [
-            r'(.+)\s*COUNTY,\s*TEXAS',
+            r'([A-Z][A-Z\s\-]+[A-Z]+)\s*COUNTY,\s*TEXAS',
         ]
         return self.get_match_group(county_patterns)
 
@@ -384,12 +411,15 @@ class TextParser(object):
 
     def oc_email(self) -> str:
         """
-        Look for opposing counsel's email address.
+        Look for opposing counsel's email address. Beware not to grab an email
+        address belonging to the responding party's attorney, which may appear
+        within the "TO" line of the discovery request.
         """
         email_patterns = [
             r'^(\S+@\S+\.\S+)$',
             r'(\S+@\S+\.\S+)$',
             r'^(\S+@\S+\.\S+)\s',
+            r'STATE BAR\s.*\s(\S+@\S+\.\S+)',
         ]
         return self.get_match_group(email_patterns, window_size=None)
 
@@ -433,17 +463,20 @@ class TextParser(object):
         Try to figure out what kind of discovery request this is.
         """
         searches = {
-            "PRODUCTION AND INSPECTION": "Production Requests",
-            "PRODUCTION & INSPECTION": "Production Requets",
-            "REQUEST FOR PRODUCTION": "Production Requests",
-            "REQUESTS FOR PRODUCTION": "Production Requests",
-            "PRODUCTION REQUEST": "Production Requests",
-            "PRODUCTION REQUESTS": "Production Requests",
-            "INTERROGATORIES": "Interrogatories",
-            "RULE 197.2(D)": "Interrogatories",
-            "RULE 194": "Request for Disclosures",
-            "REQUEST FOR ADMISSION": "Request for Admissions",
-            "REQUESTS FOR ADMISSION": "Request for Admissions",
+            "PRODUCTION AND INSPECTION": "PRODUCTION",
+            "PRODUCTION & INSPECTION": "PRODUCTION",
+            "REQUEST FOR PRODUCTION": "PRODUCTION",
+            "REQUESTS FOR PRODUCTION": "PRODUCTION",
+            "PRODUCTION REQUEST": "PRODUCTION",
+            "PRODUCTION REQUESTS": "PRODUCTION",
+            "INTERROGATORIES": "INTERROGATORIES",
+            "RULE 197.2(D)": "INTERROGATORIES",
+            "REQUEST FOR DISCLOSURES": "DISCLOSURES",
+            "REQUESTS FOR DISCLOSURE": "DISCLOSURES",
+            "RULE 194": "DISCLOSURES",
+            "RULE OF CIVIL PROCEDURE 194": "DISCLOSURES",
+            "REQUEST FOR ADMISSION": "ADMISSIONS",
+            "REQUESTS FOR ADMISSION": "ADMISSIONS",
         }
         return self.categorize(searches)
 
@@ -476,7 +509,7 @@ class TextParser(object):
 
             # If the current line starts with the next request id that we
             # expect, complete the current request and save it.
-            if cleaned_line.startswith(next_request_id):
+            if cleaned_line.startswith(next_request_id):  # and cleaned_line[-1] not in ',;ND':  # NOQA
                 # Save the request we've been working on.
                 requests.append(self.__request_package(target_request_number, request_text))  # NOQA
                 target_request_number += 1
@@ -533,7 +566,30 @@ class TextParser(object):
         for prefix in request_prefixes:
             request_id = '{}1.'.format(prefix)
             for index, line in reversed(list(enumerate(lines))):
-                if str(line).strip().upper().startswith(request_id):
+                test_line = str(line).strip().upper()
+
+                # See if the line starts with the request id we're looking
+                # for AND make sure it does NOT end with some punctuation
+                # that suggests it's part of an internal sub-list.
+                #
+                # For example, the following text lines would NOT need the
+                # second test because the list numbering would NOT fool us:
+                #
+                # 1. For each job you've had in the past 12 years, state:
+                #    A. The name of the employer; and
+                #    B. Your salary;
+                #
+                # Yet the following text lines WOULD need the second test
+                # because the list numbering would fool us:
+                #
+                # 1. For each job you've had in the past 12 years, state:
+                #    1. The name of the employer; and
+                #    2. Your salary.
+                #
+                # That's the point of the second test that eliminates lines
+                # ending with ";", ",", (an)"d", or (o)"r".
+                if test_line.startswith(request_id) \
+                   and test_line[-1] not in ',;DR':
                     # Request 1 is found
                     starting_index = index
                     break
@@ -643,29 +699,36 @@ class EmailNotifier(object):
             (str): Subject
             (str): Message
         """
+        oc = doc.get('requesting_attory', {})
+        oc_details = oc.get('details', {})
+        oc_name = oc_details.get('name', "unknown")
+        oc_address = oc_details.get('address', "unknown")
+        oc_email = oc.get('email', "unknown")
+        oc_bar_number = oc.get('bar_number', "unknown")
+
         message = EmailNotifier.MESSAGE.format(
             discovery_type=doc['discovery_type'],
-            oc_name=doc['requesting_attorney']['details']['name'],
+            oc_name=oc_name,
             cause_number=doc['cause_number'],
             court_number=doc['court_number'],
             court_type=doc['court_type'],
             county=doc['county'],
             request_count=len(doc['requests']),
-            oc_email=doc['requesting_attorney']['email'],
-            oc_address=doc['requesting_attorney']['details']['address'],
-            oc_bar_number=doc['requesting_attorney']['bar_number'],
+            oc_email=oc_email,
+            oc_address=oc_address,
+            oc_bar_number=oc_bar_number,
         )
         subject = EmailNotifier.SUBJECT.format(
             discovery_type=doc['discovery_type'],
-            oc_name=doc['requesting_attorney']['details']['name'],
+            oc_name=oc_name,
             cause_number=doc['cause_number'],
             court_number=doc['court_number'],
             court_type=doc['court_type'],
             county=doc['county'],
             request_count=len(doc['requests']),
-            oc_email=doc['requesting_attorney']['email'],
-            oc_address=doc['requesting_attorney']['details']['address'],
-            oc_bar_number=doc['requesting_attorney']['bar_number'],
+            oc_email=oc_email,
+            oc_address=oc_address,
+            oc_bar_number=oc_bar_number,
         )
         return subject, message
 
@@ -793,6 +856,24 @@ def validate_item(item: dict, logger) -> bool:
     return True
 
 
+def get_email(s: str) -> str:
+    """
+    Extract just the email address from an address that may
+    contain a display name, e.g. "Thomas Daley" <tjd@powerdaley.com>
+
+    Args:
+        s (str): String to search
+
+    Returns:
+        (str): The email address we located or, if none located, the
+               original string.
+    """
+    match = re.search(r'([A-Za-z0-9\-\.\_\$]+@[A-Za-z0-9\-\.\_]+\.[A-Za-z]+)', s)
+    if match:
+        return match.group(1).strip()
+    return s
+
+
 def main():
     queue = BotQueue()
     db = Database()
@@ -845,7 +926,6 @@ def main():
             if DEBUG:
                 for request in requests:
                     print("REQUEST {}: {}\n{}\n".format(request["number"], request["request"], "-"*80))  # NOQA
-            outfile = output_file_name(filename, params['processed_path']) + ".json"  # NOQA
 
             bar_number = parser.oc_bar_number()
             doc = {
@@ -853,11 +933,12 @@ def main():
                 'court_number': parser.court_number(),
                 'county': parser.county(),
                 'cause_number': parser.cause_number(),
-                "discovery_type": parser.discovery_type(),
-                "requesting_attorney": {
-                    "bar_number": bar_number,
-                    "email": parser.oc_email(),
-                    "details": attorney_searcher.find(bar_number)
+                'discovery_type': parser.discovery_type(),
+                'owner': get_email(item['payload']['email_from']),
+                'requesting_attorney': {
+                    'bar_number': bar_number,
+                    'email': parser.oc_email(),
+                    'details': attorney_searcher.find(bar_number)
                 },
                 'requests': requests,
                 'item': item,
@@ -866,6 +947,7 @@ def main():
             emailer.reply(doc)
 
             if DEBUG:
+                outfile = output_file_name(filename, params['processed_path']) + ".json"  # NOQA
                 with open(outfile, "w") as json_file:
                     json.dump(doc, json_file, indent=4, default=json_util.default)  # NOQA
                 parser.dump_lines(output_file_name(filename, params['processed_path']) + "_dump.txt")  # NOQA
