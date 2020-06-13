@@ -55,6 +55,7 @@ class MailGetter(object):
                 ssl=self.params["mailssl"],
                 use_uid=True
             )
+            self.logger.debug("Username: %s, Password: %s", self.params["username"], self.params["password"])
             self.server.login(self.params["username"], self.params["password"])
         except ConnectionRefusedError as e:
             self.logger.fatal(
