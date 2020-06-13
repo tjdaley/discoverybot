@@ -42,12 +42,25 @@ class BotQueue(object):
             self.dbconn.create_collection(
                 self.collection,
                 capped=True,
-                max=100000,
-                size=100000,
+                max=500,  # maximum number of documents in the collection
+                size=1048576,  # maximum size of the collection in bytes (1 MB)
                 autoIndexId=True
             )
             index = [("started_at", ASCENDING)]
             self.dbconn[self.collection].create_index(index)
+
+            # TTL won't work, for now. TTL does not work on capped collections.
+            # This is because capped collections are a fixed size and therefore
+            # do not permit removal operations.
+            #
+            # I'm using a capped collection because my understanding is that
+            # the findoneandupdate() method will only work on capped
+            # collections, but now I can't find where I read that.
+            # This is all working fine, but one day I'd like to try creating
+            # the collection without a cap. If the find one and update method
+            # still works in the pymongo driver, then this TTL index will
+            # allow us to manage the queue size. Bottom line, the TTL index
+            # here is not functional. TJD 2019-11-24.
             index = [("completed_at", ASCENDING)]
             self.dbconn[self.collection].create_index(
                 index,
