@@ -505,7 +505,7 @@ class TextParser(object):
         for line in lines[starting_index:]:
             next_request_id = "{}{}."\
                 .format(prefix, str(target_request_number+1))
-            cleaned_line = str(line).strip().upper()
+            cleaned_line = str(line).strip().upper().replace(' .', '.')
 
             # If the current line starts with the next request id that we
             # expect, complete the current request and save it.
