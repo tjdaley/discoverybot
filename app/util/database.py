@@ -23,7 +23,7 @@ class Database(object):
     database product or implementation, e.g. mongo, mysql, dynamodb,
     flat files, etc.
     """
-    def __init__(self):
+    def __init__(self, params: dict):
         """
         Instance initializer.
         """
@@ -31,6 +31,7 @@ class Database(object):
         self.dbconn = None
         self.logger = Logger.get_logger()
         self.last_inserted_id = None
+        self.params = params
 
     def connect(self) -> bool:
         """
@@ -42,9 +43,9 @@ class Database(object):
         success = False
 
         try:
-            self.logger.debug("Connecting to db %s at %s", DB_NAME, DB_URL)
-            client = MongoClient(DB_URL)
-            dbconn = client[DB_NAME]
+            self.logger.debug("Connecting to db %s at %s", self.params['DB_NAME'], self.params['DB_URL'])
+            client = MongoClient(self.params["DB_URL"])
+            dbconn = client[self.params['DB_NAME'])
             self.client = client
             self.dbconn = dbconn
             self.logger.info("Connected to database.")
@@ -70,7 +71,7 @@ class Database(object):
         record["status"] = "N"
         record["status_time"] = time.time()
 
-        id = self.dbconn[FILE_TABLE_NAME].insert_one(record).inserted_id
+        id = self.dbconn[self.params['FILE_TABLE_NAME']].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
 
@@ -86,7 +87,7 @@ class Database(object):
         """
         record = base_record()
         record = dict(record, **requests)
-        id = self.dbconn[DISCOVERY_TABLE_NAME].insert_one(record).inserted_id
+        id = self.dbconn[params['DISCOVERY_TABLE_NAME']].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
 
