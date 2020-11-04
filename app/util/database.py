@@ -11,11 +11,6 @@ from pymongo import MongoClient
 from .params import Params
 from .logger import Logger
 
-DB_URL = "mongodb://ec2-54-235-51-13.compute-1.amazonaws.com:27017/"
-DB_NAME = "discoverybot"
-FILE_TABLE_NAME = "received_files"
-DISCOVERY_TABLE_NAME = 'discovery_requests'
-
 
 class Database(object):
     """
