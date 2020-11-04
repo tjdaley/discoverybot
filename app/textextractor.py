@@ -876,7 +876,8 @@ def get_email(s: str) -> str:
 
 def main():
     queue = BotQueue()
-    db = Database()
+    params = Params(param_file="./app/params.json")
+    db = Database(params)
     db.connect()
     attorney_searcher = TexasBarSearch()
     google_extractor = GoogleTextExtractor()
@@ -889,7 +890,6 @@ def main():
         "TXT": google_extractor,
     }
     logger = Logger.get_logger(log_name=MAIN)
-    params = Params(param_file="./app/params.json")
     parser = TextParser()
 
     while True:
