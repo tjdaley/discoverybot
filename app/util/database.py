@@ -47,6 +47,7 @@ class Database(object):
             success = True
         except Exception as e:
             self.logger.error("Error connecting to database: %s", e)
+            self.logger.exception(e)
 
         return success
 
