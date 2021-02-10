@@ -40,7 +40,7 @@ class Database(object):
         try:
             self.logger.debug("Connecting to db %s at %s", self.params['DB_NAME'], self.params['DB_URL'])
             client = MongoClient(self.params["DB_URL"])
-            dbconn = client(self.params['DB_NAME'])
+            dbconn = client[self.params['DB_NAME']]
             self.client = client
             self.dbconn = dbconn
             self.logger.info("Connected to database.")
