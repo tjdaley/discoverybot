@@ -71,7 +71,9 @@ class BotQueue(object):
         """
         if not block:
             message = self.queue.brpop(self.queue_name)
-            return json.loads(message[1].decode())
+            if message:
+                return json.loads(message[1].decode())
+            return {}
 
         try:
             while True:
@@ -79,6 +81,7 @@ class BotQueue(object):
                 if message:
                     return json.loads(message[1].decode())
         except Exception as e:
+            self.logger.exception(e)
             self.logger.error("Error dequeuing item: %s", e)
 
     def finish(self, item: dict) -> bool:
