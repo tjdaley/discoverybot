@@ -4,16 +4,12 @@ queue.py - Implement a queue through MongoDb
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
 from datetime import datetime
-import time
-
-from pymongo import MongoClient, ASCENDING, DESCENDING, ReturnDocument
+import json
+import os
+import redis
 
 import util.env
 from .logger import Logger
-
-DB_URL = "mongodb://ec2-54-235-51-13.compute-1.amazonaws.com:27017/"
-DB_NAME = "discoverybot"
-FILE_TABLE_NAME = "received_files"
 
 
 class BotQueue(object):
@@ -26,46 +22,9 @@ class BotQueue(object):
         """
         Instance initializer.
         """
-        self.client = None
-        self.dbconn = None
-        self.collection = queue_name
-        self.ttl = ttl
+        self.queue = redis.Redis(host=os.environ.get('REDIS_SERVER'))
+        self.queue_name = os.environ.get('DISCOVERY_BOT_IN', 'discoverybot-in')
         self.logger = Logger.get_logger()
-        self.open()
-        self.queue = self.dbconn[self.collection]
-
-    def verify_queue(self):
-        """
-        Make sure the queue collection is set up properly.
-        """
-        if self.collection not in self.dbconn.collection_names():
-            self.dbconn.create_collection(
-                self.collection,
-                capped=True,
-                max=500,  # maximum number of documents in the collection
-                size=1048576,  # maximum size of the collection in bytes (1 MB)
-                autoIndexId=True
-            )
-            index = [("started_at", ASCENDING)]
-            self.dbconn[self.collection].create_index(index)
-
-            # TTL won't work, for now. TTL does not work on capped collections.
-            # This is because capped collections are a fixed size and therefore
-            # do not permit removal operations.
-            #
-            # I'm using a capped collection because my understanding is that
-            # the findoneandupdate() method will only work on capped
-            # collections, but now I can't find where I read that.
-            # This is all working fine, but one day I'd like to try creating
-            # the collection without a cap. If the find one and update method
-            # still works in the pymongo driver, then this TTL index will
-            # allow us to manage the queue size. Bottom line, the TTL index
-            # here is not functional. TJD 2019-11-24.
-            index = [("completed_at", ASCENDING)]
-            self.dbconn[self.collection].create_index(
-                index,
-                expireAfterSeconds=self.ttl
-            )
 
     def open(self) -> bool:
         """
@@ -74,21 +33,7 @@ class BotQueue(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
-        success = False
-
-        try:
-            self.logger.debug("Connecting to db %s at %s", DB_NAME, DB_URL)
-            client = MongoClient(DB_URL)
-            dbconn = client[DB_NAME]
-            self.client = client
-            self.dbconn = dbconn
-            self.logger.info("Connected to database.")
-            self.verify_queue()
-            success = True
-        except Exception as e:
-            self.logger.error("Error connecting to database: %s", e)
-
-        return success
+        raise Exception('Unsupported method: BotQUeue.open()')
 
     def publish(self, record: dict, priority: int = 5) -> bool:
         """
@@ -99,21 +44,21 @@ class BotQueue(object):
             priority (int): The priority of the item. Default = 5. Lesser
                 values are processed before greater values. I.E. priority=1
                 is processed before priority=5 which is processed before
-                priority=10.
+                priority=10. (IGNORED)
 
         Returns:
             (bool): True if successful, otherwise False.
         """
         success = True
         item = {
-                "created_at": datetime.now(),
-                "started_at": zero_date(),
-                "completed_at": zero_date(),
-                "priority": priority,
+                "created_at": datetime.now().strftime('%Y-%m-%d'),
+                # "started_at": zero_date(),
+                # "completed_at": zero_date(),
+                # "priority": priority,
                 "payload": record
         }
         try:
-            self.queue.insert(item, manipulate=False)
+            self.queue.lpush(self.queue_name, json.dumps(item))
         except Exception as e:
             self.logger.error("Error queueing record: %s", str(e))
             success = False
@@ -124,26 +69,17 @@ class BotQueue(object):
         """
         Await an item from the queue.
         """
-        query = {"started_at": zero_date()}
-        order_by = [("priority", ASCENDING), ("created_at", ASCENDING)]
+        if not block:
+            message = self.queue.brpop(self.queue_name)
+            return json.loads(message[1].decode())
 
-        retry_count = 0
-        item = None
-
-        while not item:
-            item = self.queue.find_one_and_update(
-                filter=query,
-                sort=order_by,
-                update={"$set": {"started_at": datetime.now()}},
-                tailable=True,
-                return_document=ReturnDocument.AFTER
-            )
-            if not item:
-                if retry_count < 5:
-                    retry_count += 1
-                time.sleep(2**retry_count)
-
-        return item
+        try:
+            while True:
+                message = self.queue.brpop(self.queue_name, timeout=30)
+                if message:
+                    return json.loads(message[1].decode())
+        except Exception as e:
+            self.logger.error("Error dequeuing item: %s", e)
 
     def finish(self, item: dict) -> bool:
         """
@@ -155,8 +91,6 @@ class BotQueue(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
-        item["completed_at"] = datetime.now()
-        self.queue.save(item)
         return True
 
     def count(self) -> int:
@@ -164,10 +98,7 @@ class BotQueue(object):
         Returns:
             (int): Number of items in the queue.
         """
-        cursor = self.queue.find({"started_at": zero_date()})
-        if cursor:
-            return cursor.count()
-        return 0
+        return self.queue.llen(self.queue_name)
 
     def clear(self) -> bool:
         """
@@ -176,7 +107,7 @@ class BotQueue(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
-        self.queue.drop()
+        self.queue.ltrim(self.queue_name, 1, 0)
 
 
 def zero_date():
