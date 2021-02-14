@@ -1,6 +1,7 @@
 .vscode
 retrieved/
 processed/
+input/
 app/params.json
 app/credentials.json
 app/token.pickle
