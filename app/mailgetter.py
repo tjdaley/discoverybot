@@ -16,13 +16,13 @@ from imapclient import IMAPClient, exceptions as IMAPExceptions
 
 from util.botqueue import BotQueue
 from util.logger import Logger
-from util.params import Params
 from util.serverlock import ServerLock
+import util.env
 
 # Uses this port to make sure only one version of this program
 # is running on this server. Would like a distributed locking mechanism
 # but I can't afford one right now. ;-)
-LOCK_PORT = 9000
+LOCK_PORT = int(os.environ.get('LOCK_PORT', 9000))
 
 MAIN = "MAILGETTER"
 
@@ -37,7 +37,6 @@ class MailGetter(object):
         """
         mimetypes.init()
         self.logger = Logger.get_logger(log_name=MAIN + ".Cls")
-        self.params = Params(param_file="./app/params.json")
         self.server = None
         self.queue = BotQueue()
 
@@ -48,30 +47,25 @@ class MailGetter(object):
         Returns:
             (bool): True if successful, otherwise False
         """
+        mailserver = os.environ.get('mailserver')
+        imapport = os.environ.get('imapport')
+        mailssl = os.environ.get('mailssl')
         try:
             self.server = IMAPClient(
-                self.params["mailserver"],
-                port=self.params["imapport"],
-                ssl=self.params["mailssl"],
+                mailserver,
+                port=imapport,
+                ssl=mailssl,
                 use_uid=True
             )
-            self.logger.debug("Username: %s, Password: %s", self.params["username"], self.params["password"])
-            self.server.login(self.params["username"], self.params["password"])
+            username = os.environ.get('mail_username')
+            password = os.environ.get('mail_password')
+            self.logger.debug(f"Username: {username}, Password: {password}")
+            self.server.login(username, password)
         except ConnectionRefusedError as e:
-            self.logger.fatal(
-                "Connection to %s:%s was refused: %s",
-                self.params["mailserver"],
-                self.params["imapport"],
-                e
-            )
+            self.logger.fatal(f"Connection to {mailserver}:{imapport} was refused: {str(e)}")
             return False
         except Exception as e:
-            self.logger.fatal(
-                "Error connecting to %s:%s: %s",
-                self.params["mailserver"],
-                self.params["imapport"],
-                e
-            )
+            self.logger.fatal(f"Connection to {mailserver}:{imapport} was refused: {str(e)}")
             return False
 
         return True
@@ -111,39 +105,30 @@ class MailGetter(object):
 
         # First, make sure the INBOX folder exists. If it does not exist,
         # we have a serious problem and need to quit.
-        if not self.server.folder_exists(self.params["inbox"]):
-            self.logger.fatal(
-                "Error locating INBOX named '%s'.",
-                self.params["inbox"]
-            )
+        inbox = os.environ.get('inbox')
+        if not self.server.folder_exists(inbox):
+            self.logger.fatal(f"Error locating INBOX named '{inbox}'.")
             return False
 
         # Next, see if the PROCESSED folder exists. If it does not, try to
         # create it. If we try to create it and the creation fails, again,
         # we have a serious problem and cannot continue.
-        if not self.server.folder_exists(self.params["processed_folder"]):
-            self.logger.error(
-                "Error locating PROCESSED folder named '%s'.",
-                self.params["processed_folder"]
-            )
-            self.logger.error(
-                "Will attempt to create folder named '%s'.",
-                self.params["processed_folder"]
-            )
+        processed_folder = os.environ.get('processed_folder')
+        if not self.server.folder_exists(processed_folder):
+            self.logger.error(f"Error locating PROCESSED folder named '{processed_folder}'.")
+            self.logger.error(f"Will attempt to create folder named '{processed_folder}'.")
 
             try:
-                message = self.server.create_folder(
-                    self.params["processed_folder"]
-                )
+                message = self.server.create_folder(processed_folder)
                 self.logger.info(
                     "Successfully created '%s': %s",
-                    self.params["processed_folder"],
+                    processed_folder,
                     message
                 )
             except Exception:
                 self.logger.fatal(
                     "Failed to create '%s': %s",
-                    self.params["processed_folder"],
+                    processed_folder,
                     message
                 )
                 return False
@@ -175,13 +160,14 @@ class MailGetter(object):
             subject (str): Subject line of the email.
             reply_to (str): Reply-To Address of the email
         """
+        input_path = os.environ.get('input_path')
         for link in links:
             if link[-4:].upper() == ".PDF":
                 my_link = cloudize_link(link)
                 self.logger.debug("Found link: %s", my_link)
                 content = requests.get(my_link, allow_redirects=True).content
                 filename = "{}/{}-{}".format(
-                    self.params["input_path"],
+                    input_path,
                     msgid,
                     urllib.parse.unquote(link[link.rfind("/")+1:])
                 )
@@ -209,6 +195,7 @@ class MailGetter(object):
         )
         from_email = sanitize_from_name(message.get("From"))
         reply_to = sanitize_from_name(message.get("Return-Path") or from_email)
+        input_path = os.environ.get('input_path')
 
         try:
             subject = message.get("Subject")
@@ -267,7 +254,7 @@ class MailGetter(object):
 
                     if mimetype is not None:
                         filename = "{}/{}".format(
-                            self.params["input_path"],
+                            input_path,
                             filename
                         )
                         with open(filename, "wb") as fp:
@@ -387,11 +374,11 @@ class MailGetter(object):
             that an operator can fix if and requeue it by clearing the SEEN
             flag.
         """
-        select_info = self.server.select_folder(self.params["inbox"])
+        select_info = self.server.select_folder(os.environ.get('inbox'))
         self.logger.debug(
             "%d messages in %s.",
             select_info[b'EXISTS'],
-            self.params["inbox"]
+            os.environ.get('inbox')
         )
 
         messages = self.server.search(criteria='UNSEEN')

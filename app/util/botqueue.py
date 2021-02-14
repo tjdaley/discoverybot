@@ -8,7 +8,7 @@ import time
 
 from pymongo import MongoClient, ASCENDING, DESCENDING, ReturnDocument
 
-from .params import Params
+import util.env
 from .logger import Logger
 
 DB_URL = "mongodb://ec2-54-235-51-13.compute-1.amazonaws.com:27017/"
