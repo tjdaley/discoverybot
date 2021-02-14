@@ -30,18 +30,6 @@ email messages, and mark them as having been processed.
 from imapclient import IMAPClient, exceptions as IMAPExceptions
 ```
 
-Lastly, we import our own modules that we will use in each program. The ```params``` module provides
-a standard way to retrieve and access run-time parameters, such as the email server address, username,
-password, etc. It supports two methods for storing parameters. For now, we'll just store our parameters
-in a text file that contains json-formatted data, ```params.json```. When the program is in production,
-we'll want to provide run time parameters through environment variables for security reasons. This ```params```
-module allows us to flip between those two methods without making any significant changes to our
-program code.
-
-```python
-from util.params import Params
-```
-
 The ```logger``` module defines a simple class that is a wrapper to Python's standard *logging* module.
 You'll see this used instead of ```print()``` statements. It allows us to control what messages get logged
 to the screen and to a log file.
@@ -79,7 +67,6 @@ class MailGetter(object):
         Class initializer.
         """
         self.logger = Logger.get_logger()
-        self.params = Params(param_file="./app/params.json")
         self.server = None
 ```
 
@@ -97,14 +84,20 @@ You'll see that most of the *connect()* method's code relates to catching, loggi
         Returns:
             (bool): True if successful, otherwise False
         """
+        mailserver = os.environ.get('mailserver')
+        mailport = os.environ.get('mailport')
+        mailssl = os.environ.get('mailssl)
+        username = os.environ.get('mail_username')
+        password = os.environ.get('mail_password')
+
         try:
-            self.server = IMAPClient(self.params["mailserver"], port=self.params["mailport"], ssl=self.params["mailssl"], use_uid=True)
-            self.server.login(self.params["username"], self.params["password"])
+            self.server = IMAPClient(mailserver, mailport, mailssl, use_uid=True)
+            self.server.login(username, password)
         except ConnectionRefusedError as e:
-            self.logger.fatal("Connection to %s:%s was refused: %s", self.params["mailserver"], self.params["mailport"], e)
+            self.logger.fatal("Connection to %s:%s was refused: %s", mailserver, mailport, e)
             return False
         except Exception as e:
-            self.logger.fatal("Error connecting to %s:%s: %s", self.params["mailserver"], self.params["mailport"], e)
+            self.logger.fatal("Error connecting to %s:%s: %s", mailserver, mailport, e)
             return False
 
         return True
@@ -121,7 +114,7 @@ anyway.
 The *check_folders()* method does three things:
 
 1. It makes sure we have an INBOX folder. The exact name of the INBOX folder is specified in our
-run-time parameters (params.json). If the INBOX folder does not exist, we have a serious problem
+run-time parameters (.env). If the INBOX folder does not exist, we have a serious problem
 and will not be able to continue.
 2. Next, it checks for the PROCESSED folder. Again, the exact name of that folder is specified in our
 run-time parameters file. If the PROCESSED folder does not exist, then we try to create it. If it does not
@@ -143,22 +136,24 @@ next step. Otherwise, if we can't continue, it will return **False**.
 
         # First, make sure the INBOX folder exists. If it does not exist, we have a serious problem
         # and need to quit.
-        if not self.server.folder_exists(self.params["inbox"]):
-            self.logger.fatal("Error locating INBOX named '%s'.", self.params["inbox"])
+        inbox = os.environ.get('inbox')
+        if not self.server.folder_exists(inbox):
+            self.logger.fatal("Error locating INBOX named '%s'.", inbox)
             return False
 
         # Next, see if the PROCESSED folder exists. If it does not, try to create it.
         # If we try to create it and the creation fails, again, we have a serious problem and cannot
         # continue.
-        if not self.server.folder_exists(self.params["processed_folder"]):
-            self.logger.error("Error locating PROCESSED folder named '%s'.", self.params["processed_folder"])
-            self.logger.error("Will attempt to create folder named '%s'.", self.params["processed_folder"])
+        processed_folder = os.environ.get('processed_folder')
+        if not self.server.folder_exists(processed_folder):
+            self.logger.error("Error locating PROCESSED folder named '%s'.", processed_folder)
+            self.logger.error("Will attempt to create folder named '%s'.", processed_folder)
 
             try:
-                message = self.server.create_folder(self.params["processed_folder"])
-                self.logger.info("Successfully created '%s': %s", self.params["processed_folder"], message)
+                message = self.server.create_folder(processed_folder)
+                self.logger.info("Successfully created '%s': %s", processed_folder, message)
             except Exception:
-                self.logger.fatal("Failed to create '%s': %s", self.params["processed_folder"], message)
+                self.logger.fatal("Failed to create '%s': %s", processed_folder, message)
                 return False
 
         self.logger.info("Folder check was successful.")
@@ -194,8 +189,9 @@ result from *process_message()*, then mark this message as SEEN and FLAGGED FOR 
             If processing was not successful: Mark as "SEEN" and "FOLLOWUP" so that an operator can fix
             if and requeue it by clearing the SEEN flag.
         """
-        select_info = self.server.select_folder(self.params["inbox"])
-        self.logger.debug("%d messages in %s.", select_info[b'EXISTS'], self.params["inbox"])
+        inbox = os.environ.get('inbox')
+        select_info = self.server.select_folder(inbox)
+        self.logger.debug("%d messages in %s.", select_info[b'EXISTS'], inbox)
 
         messages = self.server.search(criteria='UNSEEN')
 
@@ -278,7 +274,7 @@ a **False** value. You should recall from above that this **True** or **False** 
 
                 # Save attached file . . .
                 if upper_extension == ".PDF":
-                    with open("{}/{}".format(self.params["input_path"], filename), "wb") as fp:
+                    with open("{}/{}".format(os.environ.get('input_path'), filename), "wb") as fp:
                         fp.write(part.get_payload(decode=True))
 
                 # Save file referenced by a link . . .
