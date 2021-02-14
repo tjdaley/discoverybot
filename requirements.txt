@@ -5,3 +5,4 @@ requests==2.25.1
 google_api_python_client==1.12.8
 protobuf==3.14.0
 python-dotenv==0.14.0
+redis==3.5.3
