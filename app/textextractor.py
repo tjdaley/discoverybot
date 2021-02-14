@@ -4,12 +4,13 @@ textextractor.py - Extract text from PDF files.
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
 import ntpath
+import time
 
 from util.botqueue import BotQueue
 from util.database import Database
 from util.logger import Logger
-from util.params import Params
 from util.texasbarsearch import TexasBarSearch
+import util.env
 
 from bson import json_util
 import json
@@ -21,7 +22,8 @@ from apiclient import errors
 from apiclient.http import MediaFileUpload, MediaIoBaseDownload
 import mimetypes
 import pickle
-import os.path
+import os
+import os
 import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -37,7 +39,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-DEBUG = True
+DEBUG = (os.environ.get('DEBUG', '0') == '1')
 MAIN = "TXTEXT"
 
 
@@ -386,8 +388,8 @@ class TextParser(object):
         """
         court_patterns = [
             r'(\d+)(?:ND|RD|TH|ST)',
-            r'(?:NO|NUMBER|NO\.|NUM|NUM\.)(?:\:|\s)(\d+)',
             r'([0-9]{1,3})\sJUDICIAL',
+            r'(?:NO|NUMBER|NO\.|NUM|NUM\.)(?:\:|\s)(\d+)',
         ]
         return self.get_match_group(court_patterns, window_size=20)
 
@@ -493,7 +495,7 @@ class TextParser(object):
         """
         requests = []
         lines = self.lines
-        starting_index, prefix = self.__first_request(lines)
+        starting_index, pattern = self.__first_request(lines)
 
         # We couldn't find the first request. Give up.
         if starting_index is None:
@@ -503,8 +505,7 @@ class TextParser(object):
         target_request_number = 1
         request_text = ''
         for line in lines[starting_index:]:
-            next_request_id = "{}{}."\
-                .format(prefix, str(target_request_number+1))
+            next_request_id = pattern.format(str(target_request_number+1))
             cleaned_line = str(line).strip().upper().replace(' .', '.')
 
             # If the current line starts with the next request id that we
@@ -518,7 +519,7 @@ class TextParser(object):
                 request_text += line
 
         # Add the last request
-        request_id = "{}{}.".format(prefix, str(target_request_number))
+        request_id = pattern.format(str(target_request_number))
         if str(request_text).strip().upper().startswith(request_id):
             requests.append(self.__request_package(target_request_number, request_text))  # NOQA
 
@@ -560,11 +561,12 @@ class TextParser(object):
         # requests if we start with the no-prefix assumption.
 
         # NOTE: Trailing space it important!!
-        request_prefixes = ['REQUEST ', 'INTERROGATORY ', '']
+        request_patterns = ['REQUEST {}.', 'REQUEST {}:', 'INTERROGATORY {}.', 'INTERROGATORY {}:','{}. Produce', '{}.']
         starting_index = None
 
-        for prefix in request_prefixes:
-            request_id = '{}1.'.format(prefix)
+        for pattern in request_patterns:
+            request_id = pattern.format('1')
+            self.logger.info("Checking for %s", request_id)
             for index, line in reversed(list(enumerate(lines))):
                 test_line = str(line).strip().upper()
 
@@ -595,7 +597,7 @@ class TextParser(object):
                     break
             if starting_index is not None:
                 break
-        return starting_index, prefix
+        return starting_index, pattern
 
     def __request_package(
         self,
@@ -649,7 +651,7 @@ class EmailNotifier(object):
         """
         Initializer.
         """
-        self.params = Params(param_file="./app/params.json")
+        pass
 
     def reply(self, doc: dict) -> bool:
         """
@@ -663,25 +665,30 @@ class EmailNotifier(object):
         subject, message = self.format_message(doc)
         context = ssl.create_default_context()
         email = MIMEMultipart()
-        email['From'] = self.params['username']
+        email['From'] = os.environ.get('username')
         email['To'] = doc['item']['payload']['reply_to']
         email['Subject'] = subject
         email['Bcc'] = 'tom@powerdaley.com'
         email.attach(MIMEText(message, 'plain'))
         message = email.as_string()
 
+        mailserver = os.environ.get('mailserver')
+        smtpport = os.environ.get('smtpport')
+        username = os.environ.get('mail_username')
+        password = os.environ.get('mail_password')
+
         try:
             with smtplib.SMTP_SSL(
-                self.params['mailserver'],
-                self.params['smtpport'],
+                mailserver,
+                smtpport,
                 context=context
             ) as server:
                 server.login(
-                    self.params['username'],
-                    self.params['password']
+                    username,
+                    password
                 )
                 server.sendmail(
-                    self.params['username'],
+                    username,
                     doc['item']['payload']['reply_to'],
                     message
                 )
@@ -876,12 +883,12 @@ def get_email(s: str) -> str:
 
 def main():
     queue = BotQueue()
-    params = Params(param_file="./app/params.json")
-    db = Database(params)
+    db = Database()
     db.connect()
     attorney_searcher = TexasBarSearch()
     google_extractor = GoogleTextExtractor()
     emailer = EmailNotifier()
+    processed_path = os.environ.get('processed_path')
     extractors = {
         "PDF": google_extractor,
         "DOCX": google_extractor,
@@ -891,7 +898,7 @@ def main():
     }
     logger = Logger.get_logger(log_name=MAIN)
     parser = TextParser()
-
+    
     while True:
         # Retrieve next item from queue. This call blocks.
         item = queue.next()
@@ -928,13 +935,14 @@ def main():
                     print("REQUEST {}: {}\n{}\n".format(request["number"], request["request"], "-"*80))  # NOQA
 
             bar_number = parser.oc_bar_number()
+            email_from = get_email(item['payload']['email_from'])
             doc = {
                 'court_type': parser.court_type(),
                 'court_number': parser.court_number(),
                 'county': parser.county(),
                 'cause_number': parser.cause_number(),
                 'discovery_type': parser.discovery_type(),
-                'owner': get_email(item['payload']['email_from']),
+                'owner': email_from,
                 'requesting_attorney': {
                     'bar_number': bar_number,
                     'email': parser.oc_email(),
@@ -943,19 +951,25 @@ def main():
                 'requests': requests,
                 'item': item,
             }
+
+            # Link to client record, if we can find it.
+            client = db.get_client_id(parser.county(), parser.cause_number(), email_from)
+            if client:
+                doc['client_id'] = client['_id']
+
             db.insert_discovery_requests(doc)
             emailer.reply(doc)
 
             if DEBUG:
-                outfile = output_file_name(filename, params['processed_path']) + ".json"  # NOQA
+                outfile = output_file_name(filename, processed_path) + ".json"  # NOQA
                 with open(outfile, "w") as json_file:
                     json.dump(doc, json_file, indent=4, default=json_util.default)  # NOQA
-                parser.dump_lines(output_file_name(filename, params['processed_path']) + "_dump.txt")  # NOQA
+                parser.dump_lines(output_file_name(filename, processed_path) + "_dump.txt")  # NOQA
 
         # See if we got anything useful
         if text is not None:
             # Save extracted text
-            outfile = output_file_name(filename, params["processed_path"])
+            outfile = output_file_name(filename, processed_path)
             with open(outfile, "w") as text_file:
                 text_file.write(text)
         queue.finish(item)
