@@ -4,11 +4,12 @@ database.py - Class for access our persistent data store for discoverybot.
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
 from datetime import datetime
+import os
 import time
 
 from pymongo import MongoClient
 
-from .params import Params
+import util.env
 from .logger import Logger
 
 
@@ -18,15 +19,15 @@ class Database(object):
     database product or implementation, e.g. mongo, mysql, dynamodb,
     flat files, etc.
     """
-    def __init__(self, params: dict):
+    def __init__(self):
         """
         Instance initializer.
         """
         self.client = None
         self.dbconn = None
+        self.client_conn = None
         self.logger = Logger.get_logger()
         self.last_inserted_id = None
-        self.params = params
 
     def connect(self) -> bool:
         """
@@ -38,11 +39,14 @@ class Database(object):
         success = False
 
         try:
-            self.logger.debug("Connecting to db %s at %s", self.params['DB_NAME'], self.params['DB_URL'])
-            client = MongoClient(self.params["DB_URL"])
-            dbconn = client[self.params['DB_NAME']]
+            db_name = os.environ.get('DB_NAME')
+            db_url = os.environ.get('DB_URL')
+            self.logger.debug("Connecting to db %s at %s", db_name, db_url)
+            client = MongoClient(db_url)
+            dbconn = client[db_name]
             self.client = client
             self.dbconn = dbconn
+            self.client_conn = client['payment_redirect']
             self.logger.info("Connected to database.")
             success = True
         except Exception as e:
@@ -66,8 +70,9 @@ class Database(object):
         record = record_from_kwargs(kwargs)
         record["status"] = "N"
         record["status_time"] = time.time()
+        file_collection = os.environ.get('FILE_TABLE_NAME')
 
-        id = self.dbconn[self.params['FILE_TABLE_NAME']].insert_one(record).inserted_id
+        id = self.dbconn[file_collection].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
 
@@ -81,11 +86,35 @@ class Database(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
+        discovery_collection = os.environ.get('DISCOVERY_TABLE_NAME')
         record = base_record()
         record = dict(record, **requests)
-        id = self.dbconn[params['DISCOVERY_TABLE_NAME']].insert_one(record).inserted_id
+        id = self.dbconn[discovery_collection].insert_one(record).inserted_id
         self.last_inserted_id = id
         return True
+
+    def get_client_id(self, county: str, cause_number: str, email: str) -> str:
+        """
+        See if there is a matching client for this county and cause number combo.
+
+        Args:
+            county (str): Name of the county, all uppercase, without the word "COUNTY"
+            cause_number (str): Cause Number, all uppercase
+            email (str): Email of person who sent the discovery requests. Make sure
+                they are authorized to connect discovery to this case.
+
+        Returns:
+            (id): MongoDB ID of corresponding client id.
+        """
+        query = {
+            '$and': [
+                {'case_county': {'$regex': f'^{county}$', '$options':'i'}},
+                {'cause_number': {'$eq': cause_number}},
+                {'admin_users': {'$elemMatch': {'$eq': email.lower()}}}
+            ]
+        }
+        client = self.client_conn['clients'].find_one(query)
+        return client
 
 
 def base_record() -> dict:
