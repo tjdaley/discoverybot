@@ -55,27 +55,6 @@ class Database(object):
 
         return success
 
-    def insert_received_file(self, **kwargs) -> bool:
-        """
-        Record the fact that we have received a file.
-
-        Args:
-            from (str): Sender's email address.
-            reply_to (str): Reply-to email address.
-            filepath (str): Full path to the file name.
-
-        Returns:
-            (bool): True if successful, otherwise False
-        """
-        record = record_from_kwargs(kwargs)
-        record["status"] = "N"
-        record["status_time"] = time.time()
-        file_collection = os.environ.get('FILE_TABLE_NAME')
-
-        id = self.dbconn[file_collection].insert_one(record).inserted_id
-        self.last_inserted_id = id
-        return True
-
     def insert_discovery_requests(self, requests) -> bool:
         """
         Save discovery requests.
