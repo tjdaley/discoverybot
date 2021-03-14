@@ -28,6 +28,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 
 # For sending email replies
 import smtplib
@@ -91,6 +92,45 @@ class GoogleTextExtractor(TextExtractor):
         """
         Build a Google Docs service object.
 
+        From: https://blog.benjames.io/2020/09/13/authorise-your-python-google-drive-api-the-easy-way/
+        """
+        self.logger.info("Authorizing drive service.")
+        scopes = ['https://www.googleapis.com/auth/drive']
+        creds = self.__build_google_credentials(scopes)
+        service = build('drive', 'v3', credentials=creds)
+        return service
+
+    def __instantiate_docs_service(self):
+        """
+        Build a Google Docs service object.
+
+        From: https://blog.benjames.io/2020/09/13/authorise-your-python-google-drive-api-the-easy-way/
+        """
+        self.logger.info("Authorizing docs service")
+        scopes = ['https://www.googleapis.com/auth/documents']
+        creds = self.__build_google_credentials(scopes)
+        service = build('docs', 'v1', credentials=creds)
+        return service
+
+    def __build_google_credentials(self, scopes: list):
+        """
+        Build google credentials for using a service account (for a server-based app).
+
+        Args:
+            scopes (list): List of APIs that we want access to.
+
+        Returns:
+            Google Credentials
+        """
+        with open('google_credentials.json', 'r') as f:
+            service_account_info = json.load(f)
+        creds = service_account.Credentials.from_service_account_info(service_account_info, scopes=scopes)
+        return creds
+
+    def __xinstantiate_drive_service(self):
+        """
+        Build a Google Docs service object.
+
         From: https://developers.google.com/drive/api/v3/quickstart/python
         """
         self.logger.info("Authorizing drive service.")
@@ -118,7 +158,7 @@ class GoogleTextExtractor(TextExtractor):
         service = build('drive', 'v3', credentials=creds)
         return service
 
-    def __instantiate_docs_service(self):
+    def __xinstantiate_docs_service(self):
         """
         Build a Google Docs service object.
 
