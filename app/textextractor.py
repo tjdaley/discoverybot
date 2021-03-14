@@ -925,11 +925,14 @@ def _check_paths(path_envs: list):
     Returns:
         (bool): True is all is OK, otherwise False
     """
+    print("Verifying file paths.")
     for path_env in path_envs:
         try:
-            path = os.environ.get('path_env', None)
+            path = os.environ.get(path_env, None)
+            print(f"\tVerifying path {path_env} as {path}")
             if path:
                 os.makedirs(path, exist_ok=True)
+                print(f"\tVerfied path: {path}")
         except Exception as e:
             print(f"Error creating path for '{path_env}' ({path}): {str(e)}")
             return False
