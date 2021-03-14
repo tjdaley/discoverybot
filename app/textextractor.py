@@ -4,6 +4,7 @@ textextractor.py - Extract text from PDF files.
 Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
 """
 import ntpath
+import socket
 import time
 
 from util.botqueue import BotQueue
@@ -21,13 +22,10 @@ import re
 from apiclient import errors
 from apiclient.http import MediaFileUpload, MediaIoBaseDownload
 import mimetypes
-import pickle
 import os
 import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 
 # For sending email replies
@@ -129,68 +127,6 @@ class GoogleTextExtractor(TextExtractor):
             service_account_info = json.load(f)
         creds = service_account.Credentials.from_service_account_info(service_account_info, scopes=scopes)
         return creds
-
-    def __xinstantiate_drive_service(self):
-        """
-        Build a Google Docs service object.
-
-        From: https://developers.google.com/drive/api/v3/quickstart/python
-        """
-        self.logger.info("Authorizing drive service.")
-        scopes = ['https://www.googleapis.com/auth/drive']
-        creds = None
-
-        # The file token.pickle stores the user's access and refresh tokens,
-        # and is created automatically when the authorization flow completes
-        # for the first time.
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-        # If there are no (valid) credentials available, let the user log in.
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', scopes)
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-
-        service = build('drive', 'v3', credentials=creds)
-        return service
-
-    def __xinstantiate_docs_service(self):
-        """
-        Build a Google Docs service object.
-
-        From: https://developers.google.com/drive/api/v3/quickstart/python
-        """
-        self.logger.info("Authorizing docs service")
-        scopes = ['https://www.googleapis.com/auth/documents']
-        creds = None
-
-        # The file token.pickle stores the user's access and refresh tokens,
-        # and is created automatically when the authorization flow completes
-        # for the first time.
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-        # If there are no (valid) credentials available, let the user log in.
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', scopes)
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-
-        service = build('docs', 'v1', credentials=creds)
-        return service
 
     def __upload_file(
         self,
@@ -680,6 +616,8 @@ class EmailNotifier(object):
     \t{oc_address}
     \tState Bar No. {oc_bar_number}
 
+    Sent from: {server}
+
     You can view these requests here: http://www.discovery.jdbot.us
 
     Kindest regards,
@@ -757,6 +695,7 @@ class EmailNotifier(object):
             oc_email=oc_email,
             oc_address=oc_address,
             oc_bar_number=oc_bar_number,
+            server=doc.get('server', 'unknown'),
         )
         subject = EmailNotifier.SUBJECT.format(
             discovery_type=doc['discovery_type'],
@@ -1003,6 +942,7 @@ def main():
                 'cause_number': parser.cause_number(),
                 'discovery_type': parser.discovery_type(),
                 'owner': email_from,
+                'server': socket.gethostname(),
                 'requesting_attorney': {
                     'bar_number': bar_number,
                     'email': parser.oc_email(),
