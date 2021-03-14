@@ -10,7 +10,7 @@ from util.botqueue import BotQueue
 from util.database import Database
 from util.logger import Logger
 from util.texasbarsearch import TexasBarSearch
-import util.env
+import util.env  # noqa
 
 from bson import json_util
 import json
@@ -23,7 +23,6 @@ from apiclient.http import MediaFileUpload, MediaIoBaseDownload
 import mimetypes
 import pickle
 import os
-import os
 import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -31,13 +30,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 # For sending email replies
-import email
 import smtplib
 import ssl
-from email import encoders
-from email.mime.base import MIMEBase
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from email.message import EmailMessage
 
 DEBUG = (os.environ.get('DEBUG', '0') == '1')
 MAIN = "TXTEXT"
@@ -72,7 +67,8 @@ class GoogleTextExtractor(TextExtractor):
         """
         TextExtractor.__init__(self)
         mimetypes.init()
-        self.logger = Logger.get_logger(log_name=MAIN + ".GoogTxtExt")
+        logger = Logger()
+        self.logger = logger.get_logger(MAIN + ".GoogTxtExt")
         self.drive_service = self.__instantiate_drive_service()
         self.docs_service = self.__instantiate_docs_service()
 
@@ -88,7 +84,7 @@ class GoogleTextExtractor(TextExtractor):
         file_id = file.get('id')
         content = self.__get_file_content(file_id)
         if not DEBUG:
-            success = self.__remove_file(file_id)
+            success = self.__remove_file(file_id)  # noqa
         return content
 
     def __instantiate_drive_service(self):
@@ -179,8 +175,8 @@ class GoogleTextExtractor(TextExtractor):
             file_type = filename[filename.rindex("."):].lower()
             try:
                 src_mime_type = mimetypes.types_map[file_type]
-            except KeyError as error:
-                self.logger.error("Unable to determine mime type for '%s'.", file_type)  # NOQA
+            except KeyError:
+                self.logger.error("Unable to determine mime type for '%s'.", file_type)
                 return None
 
         file_metadata = {
@@ -271,7 +267,8 @@ class TextParser(object):
         Initializer.
         """
         self.lines = []
-        self.logger = Logger.get_logger(log_name=MAIN + ".Parser")
+        logger = Logger()
+        self.logger = logger.get_logger(MAIN + ".Parser")
 
     def init(self, text: str) -> int:
         """
@@ -285,7 +282,7 @@ class TextParser(object):
         """
         try:
             my_text = text.replace('\r', '\n')
-            lines = text.split('\n')
+            lines = my_text.split('\n')  # tjd on 2021-03-14 text.split('\n')
             self.lines = lines
         except Exception as error:
             self.logger.error("Error loading text: %s", error)
@@ -297,7 +294,7 @@ class TextParser(object):
         with open(filename, "w") as out_file:
             for line in self.lines:
                 line_number += 1
-                out_line = "{} {} | {}".format(
+                out_line = "{} {} | {}\n".format(
                     ("000000" + str(line_number))[-6:],
                     ("      " + str(len(line)))[-6:],
                     line
@@ -314,8 +311,9 @@ class TextParser(object):
             'NO', 'NUM', 'NUMBER', 'CAUSE', 'CASE', 'MATTER',
         ]
         result = None
+        lines_to_examine = 30
         line_index = 0
-        while line_index < 10 and result is None:
+        while line_index < lines_to_examine and result is None:
             try:
                 # split line into words containing only letters and numbers
                 line = self.lines[line_index]
@@ -330,11 +328,10 @@ class TextParser(object):
                 if len(clean_words) > 1:
                     if clean_words[0].upper() in prefix_words:
                         result = words[-1]
-                else:
-                    # If there is only one word on the line and it is more or
-                    # less numeric, e.g. 470-5555-2019, treat that as the cause
-                    # number.
-                    if clean_words[0].isdigit():
+                    elif clean_words[0].isdigit():
+                        # If there is only one word on the line and it is more or
+                        # less numeric, e.g. 470-5555-2019, treat that as the cause
+                        # number.
                         result = words[0]
             except Exception as error:
                 self.logger.error("Error extracting cause number: %s", error)
@@ -515,7 +512,7 @@ class TextParser(object):
                 requests.append(self.__request_package(target_request_number, request_text))  # NOQA
                 target_request_number += 1
                 request_text = line
-            else:
+            elif line.strip().upper() != 'RESPONSE:':  # Filter out the ProDoc template
                 request_text += line
 
         # Add the last request
@@ -561,7 +558,7 @@ class TextParser(object):
         # requests if we start with the no-prefix assumption.
 
         # NOTE: Trailing space it important!!
-        request_patterns = ['REQUEST {}.', 'REQUEST {}:', 'INTERROGATORY {}.', 'INTERROGATORY {}:','{}. Produce', '{}.']
+        request_patterns = ['REQUEST {}.', 'REQUEST {}:', 'INTERROGATORY {}.', 'INTERROGATORY {}:', '{}. Produce', '{}.']
         starting_index = None
 
         for pattern in request_patterns:
@@ -662,15 +659,17 @@ class EmailNotifier(object):
         Returns:
             (bool): True if successful, otherwise False.
         """
-        subject, message = self.format_message(doc)
-        context = ssl.create_default_context()
-        email = MIMEMultipart()
-        email['From'] = os.environ.get('username')
-        email['To'] = doc['item']['payload']['reply_to']
-        email['Subject'] = subject
-        email['Bcc'] = 'tom@powerdaley.com'
-        email.attach(MIMEText(message, 'plain'))
-        message = email.as_string()
+        subject, content = self.format_message(doc)
+        message = EmailMessage()
+        message['From'] = os.environ.get('mail_username')
+        message['To'] = doc['item']['payload']['reply_to']
+        message['Subject'] = subject
+        message['Bcc'] = 'tom@powerdaley.com'
+        message.set_content(content)
+        # message.preamble = 'MIME Message Preamble'
+        # message.add_attachment(message, maintype='text', subtype='plain')
+        # message.attach(MIMEText(message, 'plain'))
+        # message = message.as_string()
 
         mailserver = os.environ.get('mailserver')
         smtpport = os.environ.get('smtpport')
@@ -678,21 +677,12 @@ class EmailNotifier(object):
         password = os.environ.get('mail_password')
 
         try:
-            with smtplib.SMTP_SSL(
-                mailserver,
-                smtpport,
-                context=context
-            ) as server:
-                server.login(
-                    username,
-                    password
-                )
-                server.sendmail(
-                    username,
-                    doc['item']['payload']['reply_to'],
-                    message
-                )
-                server.quit()
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(mailserver, smtpport, context=context) as server:
+                server.login(username, password)
+                # server.sendmail(username, doc['item']['payload']['reply_to'], message)
+                server.send_message(message)
+                # server.quit()
         except Exception as error:
             print("Error sending email:", str(error))
 
@@ -706,12 +696,12 @@ class EmailNotifier(object):
             (str): Subject
             (str): Message
         """
-        oc = doc.get('requesting_attory', {})
+        oc = doc.get('requesting_attorney', {})
+        oc_bar_number = oc.get('bar_number', "unknown")
+        oc_email = oc.get('email', "unknown")
         oc_details = oc.get('details', {})
         oc_name = oc_details.get('name', "unknown")
         oc_address = oc_details.get('address', "unknown")
-        oc_email = oc.get('email', "unknown")
-        oc_bar_number = oc.get('bar_number', "unknown")
 
         message = EmailNotifier.MESSAGE.format(
             discovery_type=doc['discovery_type'],
@@ -896,9 +886,10 @@ def main():
         "RTF": google_extractor,
         "TXT": google_extractor,
     }
-    logger = Logger.get_logger(log_name=MAIN)
+    logger_obj = Logger()
+    logger = logger_obj.get_logger(MAIN)
     parser = TextParser()
-    
+
     while True:
         # Retrieve next item from queue. This call blocks.
         item = queue.next()
@@ -932,7 +923,8 @@ def main():
         if requests:
             if DEBUG:
                 for request in requests:
-                    print("REQUEST {}: {}\n{}\n".format(request["number"], request["request"], "-"*80))  # NOQA
+                    # print("REQUEST {}: {}\n{}\n".format(request["number"], request["request"], "-"*80))  # NOQA
+                    pass  # stop printing this while we debug other stuff. TJD 2021-03.14
 
             bar_number = parser.oc_bar_number()
             email_from = get_email(item['payload']['email_from'])
@@ -979,5 +971,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         print("Good bye.")

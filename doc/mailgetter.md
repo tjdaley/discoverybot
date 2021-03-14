@@ -66,7 +66,8 @@ class MailGetter(object):
         """
         Class initializer.
         """
-        self.logger = Logger.get_logger()
+        logger = Logger()
+        self.logger = logger.get_logger('mailgetter')
         self.server = None
 ```
 

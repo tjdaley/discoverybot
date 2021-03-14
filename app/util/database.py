@@ -9,7 +9,7 @@ import time
 
 from pymongo import MongoClient
 
-import util.env
+import util.env  # noqa
 from .logger import Logger
 
 
@@ -26,7 +26,8 @@ class Database(object):
         self.client = None
         self.dbconn = None
         self.client_conn = None
-        self.logger = Logger.get_logger()
+        logger = Logger()
+        self.logger = logger.get_logger('db')
         self.last_inserted_id = None
 
     def connect(self) -> bool:
@@ -87,7 +88,7 @@ class Database(object):
         """
         query = {
             '$and': [
-                {'case_county': {'$regex': f'^{county}$', '$options':'i'}},
+                {'case_county': {'$regex': f'^{county}$', '$options': 'i'}},
                 {'cause_number': {'$eq': cause_number}},
                 {'admin_users': {'$elemMatch': {'$eq': email.lower()}}}
             ]

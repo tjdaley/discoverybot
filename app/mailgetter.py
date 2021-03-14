@@ -12,12 +12,12 @@ import os
 import quopri
 import urllib.parse
 
-from imapclient import IMAPClient, exceptions as IMAPExceptions
+from imapclient import IMAPClient
 
 from util.botqueue import BotQueue
 from util.logger import Logger
 from util.serverlock import ServerLock
-import util.env
+import util.env  # noqa
 
 # Uses this port to make sure only one version of this program
 # is running on this server. Would like a distributed locking mechanism
@@ -36,7 +36,8 @@ class MailGetter(object):
         Class initializer.
         """
         mimetypes.init()
-        self.logger = Logger.get_logger(log_name=MAIN + ".Cls")
+        logger = Logger()
+        self.logger = logger.get_logger(MAIN + ".Cls")
         self.server = None
         self.queue = BotQueue()
 
@@ -524,7 +525,8 @@ def cloudize_link(link: str) -> str:
 
 
 def main():
-    logger = Logger.get_logger(log_name=MAIN)
+    logger_obj = Logger()
+    logger = logger_obj.get_logger(MAIN)
     lock = ServerLock(LOCK_PORT)
     if not lock.lock():
         logger.error(
@@ -544,7 +546,7 @@ def main():
 
     try:
         mailgetter.wait_for_messages()
-    except KeyboardInterrupt as error:
+    except KeyboardInterrupt:
         print("Good bye")
 
 

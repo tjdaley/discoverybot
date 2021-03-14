@@ -8,7 +8,7 @@ import json
 import os
 import redis
 
-import util.env
+import util.env  # noqa
 from .logger import Logger
 
 
@@ -24,7 +24,8 @@ class BotQueue(object):
         """
         self.queue = redis.Redis(host=os.environ.get('REDIS_SERVER'))
         self.queue_name = os.environ.get('DISCOVERY_BOT_IN', 'discoverybot-in')
-        self.logger = Logger.get_logger()
+        logger = Logger()
+        self.logger = logger.get_logger('botqueue')
 
     def open(self) -> bool:
         """

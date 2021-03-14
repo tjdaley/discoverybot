@@ -1,34 +1,73 @@
+# logger.py - Return a logger for this app.
 """
-logger.py - Logging convenience
+Create a logger for this ap.
 
-Copyright (c) 2019 by Thomas J. Daley, J.D. All Rights Reserved.
+Copyright (c) 2020 by Thomas J. Daley, J.D.
 """
 import logging
+import os
+import dotenv
+
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+dotenv.load_dotenv(dotenv_path)
 
 
 class Logger(object):
     """
-    A convenience class for instantiating a consistent logger.
+    Encapsulates our standard logging behavior.
     """
-    @staticmethod
-    def get_logger(
-        log_name: str = __name__,
-        file_log_level: int = logging.DEBUG,
-        console_log_level: int = logging.DEBUG
-    ):
+    loggers = {}
+
+    def get_logger(self, identifier: str = None):
         """
-        Return a logger.
+        Instantiate a logger instance.
+
+        Args:
+            identifier (str): Sub-identifier for a module's logging [optional]
+
+        Returns:
+            Instance of logger
         """
-        my_logger = logging.getLogger(log_name)
-        my_logger.setLevel(logging.DEBUG)
-        file_handler = logging.FileHandler(log_name+".log")
-        file_handler.setLevel(file_log_level)
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(console_log_level)
-        template = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        formatter = logging.Formatter(template)
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-        my_logger.addHandler(file_handler)
-        my_logger.addHandler(console_handler)
-        return my_logger
+        log_id = os.environ.get('LOG_ID')
+        if identifier:
+            log_id = f'{log_id}.{identifier}'
+
+        # See if we should re-use a logger
+        if log_id in Logger.loggers:
+            return Logger.loggers[log_id]
+
+        # Create a new logger
+        debug = int(os.environ.get('DEBUG', '0'))
+        if debug == 1:
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.INFO
+
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # Create base logger
+        logger = logging.getLogger(log_id)
+        logger.setLevel(log_level)
+
+        # Inquire where to send log messages
+        log_to_file = int(os.environ.get('LOG_TO_FILE', '0')) == 1
+        log_to_console = int(os.environ.get('LOG_TO_CONSOLE', '0')) == 1
+
+        # File logger
+        if log_to_file:
+            log_file_name = os.environ.get('LOG_FILE', 'application.log')
+            fh = logging.FileHandler(log_file_name)
+            fh.setLevel(log_level)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+
+        # Console logger
+        if log_to_console:
+            ch = logging.StreamHandler()
+            ch.setLevel(log_level)
+            ch.setFormatter(formatter)
+            logger.addHandler(ch)
+
+        # Cache and return this logger
+        Logger.loggers[log_id] = logger
+        return logger
