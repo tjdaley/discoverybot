@@ -6,6 +6,7 @@ app/params.json
 app/credentials.json
 app/token.pickle
 credentials.json
+google_credentials.json
 token.pickle
 # Byte-compiled / optimized / DLL files
 __pycache__/
