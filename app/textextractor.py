@@ -72,6 +72,9 @@ class GoogleTextExtractor(TextExtractor):
         self.logger = logger.get_logger(MAIN + ".GoogTxtExt")
         self.drive_service = self.__instantiate_drive_service()
         self.docs_service = self.__instantiate_docs_service()
+        if not _check_paths(['processed_path']):
+            self.logger.fatal("File paths could not be created...cannot continue.")
+            exit()
 
     def extract(
         self,
@@ -909,6 +912,28 @@ def get_email(s: str) -> str:
     if match:
         return match.group(1).strip()
     return s
+
+
+def _check_paths(path_envs: list):
+    """
+    Check files paths, identified by environment variables.
+    Create missing paths.
+
+    Args:
+        path_envs (list): List of environment variables defining paths
+
+    Returns:
+        (bool): True is all is OK, otherwise False
+    """
+    for path_env in path_envs:
+        try:
+            path = os.environ.get('path_env', None)
+            if path:
+                os.makedirs(path, exist_ok=True)
+        except Exception as e:
+            print(f"Error creating path for '{path_env}' ({path}): {str(e)}")
+            return False
+    return True
 
 
 def main():

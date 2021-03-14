@@ -40,6 +40,9 @@ class MailGetter(object):
         self.logger = logger.get_logger(MAIN + ".Cls")
         self.server = None
         self.queue = BotQueue()
+        if not _check_paths(['input_path']):
+            self.logger.fatal("File paths could not be created...cannot continue.")
+            exit()
 
     def connect(self) -> bool:
         """
@@ -522,6 +525,28 @@ def cloudize_link(link: str) -> str:
             return "{}{}".format(link, cloud["postfix"])
 
     return link
+
+
+def _check_paths(path_envs: list):
+    """
+    Check files paths, identified by environment variables.
+    Create missing paths.
+
+    Args:
+        path_envs (list): List of environment variables defining paths
+
+    Returns:
+        (bool): True is all is OK, otherwise False
+    """
+    for path_env in path_envs:
+        try:
+            path = os.environ.get('path_env', None)
+            if path:
+                os.makedirs(path, exist_ok=True)
+        except Exception as e:
+            print(f"Error create path for '{path_env}' ({path}): {str(e)}")
+            return False
+    return True
 
 
 def main():
