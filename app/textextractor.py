@@ -7,6 +7,8 @@ import ntpath
 import socket
 import time
 
+from typing import Tuple
+
 from util.botqueue import BotQueue
 from util.database import Database
 from util.logger import Logger
@@ -501,7 +503,7 @@ class TextParser(object):
 
         return requests
 
-    def __next_request(self, lines: list, request_num: int) -> (int, str, int):
+    def __next_request(self, lines: list, request_num: int) -> Tuple[int, str, int]:
         """
         Locate the next discovery request.
 
@@ -516,7 +518,7 @@ class TextParser(object):
         """
         pass
 
-    def __first_request(self, lines: list) -> (int, str):
+    def __first_request(self, lines: list) -> Tuple[int, str]:
         """
         Locate the first discovery request.
 
@@ -667,7 +669,7 @@ class EmailNotifier(object):
         except Exception as error:
             print("Error sending email:", str(error))
 
-    def format_message(self, doc: dict) -> (str, str):
+    def format_message(self, doc: dict) -> Tuple[str, str]:
         """
         Format an outbound message.
 
