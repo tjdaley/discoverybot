@@ -1,15 +1,17 @@
-response_code,response
 A,It is relevant
-B,"""To the Extent"" is bullshit and evasive"
-C,We're not asking you to create anything--just produce what is in your possession
-D,We're not asking re consulting experts.
-E,Objection is only sustainable if *unreasonably* cumulative or duplicative. Fails to explain how the request is *unreasonably* cumulative or duplicative.
-F,Fails to identify more convenient or less burdensome source nor explain why or how the request is unreasonably brudensome or inconvenient
-G,"Fails to explain the burden, inconvenience, or cost of responding in sufficient detail to sustain the objection."
-H,"Fails to explain the burden, expense, harassment, or annoyance sufficient to sustain the objection."
-I,"Fails to specify which personal, constitutional, or property rights would be violated by responding to the request"
-J,Bullshit with your overbroad nonsense.
+B,"**Vague, qualified response**. ""To the Extent"" is bullshit and evasive"
+C,**Improvidential objection**. We're not asking you to create anything--just produce what is in your possession
+D,**Improvidential objection regarding consulting experts**. We're not asking re consulting experts.
+E,**Conclusory cumulative or duplicative objection**. Objection is only sustainable if *unreasonably* cumulative or duplicative. Fails to explain how the request is *unreasonably* cumulative or duplicative.
+F,**Conclusory objection as to burden**. Fails to identify more convenient or less burdensome source nor explain why or how the request is unreasonably brudensome or inconvenient
+G,"**Conclusory objection as to burden**. Fails to explain the burden, inconvenience, or cost of responding in sufficient detail to sustain the objection."
+H,"**Conclusory objection as to burden**. Fails to explain the burden, expense, harassment, or annoyance sufficient to sustain the objection."
+I,"**Vague objection regarding invasion of rights**. Fails to specify which personal, constitutional, or property rights would be violated by responding to the request"
+J,**Improper 'overly broad" objection**. Bullshit with your overbroad nonsense.
 K,"CHECK SERVICE DATE, SCHEDULING ORDER, AND TRIAL DATE."
 L,Failed to conference on the issue or seek clarification. Produce it in native electronic format.
-M,"Fails to describe the efforts taken and whether any effort, irrespective of cost, would enable responding party to produce the requested documents."
-N,"""Subject to"" is bullshit and evasive."
+M,"**Conclusory objection regarding effort and cost of complying**. Fails to describe the efforts taken and whether any effort, irrespective of cost, would enable responding party to produce the requested documents."
+N,"**Vague, qualified response**. ""Subject to"" is bullshit and evasive."
+O,**Impropery 'equally avaible' objection**. Equally availble is an improper objection in most instances. See In re Sting Soccer Group.
+P,"CHECK SERVICE DATE, ANSWER DATE, RULE 11 AGREEMENTS RE DISCLOSURES."
+Q,"**Conclusory objection to proportinality**. The requested discovery is proportional to the needs of the case because {{EXPLAIN}}. Further, the responding party complains of proportionality without explaining the actual burden of complying with the request. {{CASE LAW}}. Without understanding the burden of complying with the request, it is not possible for the Court to sustain an objection based on proportinality of the effort to comply with the request to the needs of the case."
