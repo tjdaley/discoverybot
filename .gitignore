@@ -2,6 +2,7 @@
 retrieved/
 processed/
 input/
+test data/
 app/params.json
 app/credentials.json
 app/token.pickle
