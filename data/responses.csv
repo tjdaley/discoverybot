@@ -1,7 +1,7 @@
-response_code,response
+Response_Code,Response
 A000,Rule 192.3 defines the scope of discovery generally and then lists specific matters within the scope of discovery. Included within the specific list of matters within the scope of discovery is “any other party’s legal contentions and the factual bases for those contentions.”
 A001,Documents within the scope of this request are relevant because {{explain}}.
-A002,Section 7.001 of the Texas Family Code requires the court to make a just and right division of the community estate of the parties. In discharging its duty, the Court must be able to identify the property held by each marital estate and the value of that property.
+A002,"Section 7.001 of the Texas Family Code requires the court to make a just and right division of the community estate of the parties. In discharging its duty, the Court must be able to identify the property held by each marital estate and the value of that property."
 A003,Appraisals are probative of the value of property and thus relevant to the resolution of the issues before the Court in this case.
 A004,Documents within the scope of this request are probative of the existence, value, and character of property owned or claimed by either party.
 A005,Documents within the scope of this request are probative of the existence and amount of debt owed by either party.
