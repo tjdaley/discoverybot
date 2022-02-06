@@ -1,4 +1,4 @@
-request,objection,response
+Request,Objection_Pattern_Key,Response_Codes
 payroll,RELEVANT,"A000+A002+A007"
 income,RELEVANT,"A000+A002+A007"
 bank statement,RELEVANT,"A000+A002+A004"
