@@ -1,4 +1,4 @@
-Key,Objection,Responses
+Key,Objection,Response_Codes
 RELEVANT,not relevant irrelevant to the subject matter of the suit and will not lead to the discovery of admissible evidence,"A000+A001"
 S:RELEVANT,The proposed discovery goes beyond the subject matter of the case and reasonable expectations of obtaining information that will aid resolution of the dispute.,"A000+A001"
 CREATE,"request would require the responding party to create a document not in existence. A party is not required to produce a document or tangible thing unless it is within the person's possession, custody, or control. A document that does not exist is not within a party's ""possession, custody, or control."" The only exception to the rule involves the factual observations, tests, or supporting data of a testifying expert.","C"
